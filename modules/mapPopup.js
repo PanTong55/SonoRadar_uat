@@ -1,5 +1,4 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
-import { showPromptBox, showMessageBox } from './messageBox.js';
 
 let importKmlFileFn = null;
 
@@ -368,104 +367,7 @@ export function initMapPopup({
             return marker;
           }).filter(Boolean);
           surveyPointLayer = L.layerGroup(markers);
-          // add overlay but intercept first-time enable with password
           layersControl.addOverlay(surveyPointLayer, 'Survey point');
-
-          // store state whether survey was unlocked
-          let surveyUnlocked = false;
-
-          // precomputed SHA-256 of the password "HKBRmap0505"
-          const SURVEY_PW_HASH = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
-
-          // helper to compute sha256 hex
-          async function sha256hex(str) {
-            const enc = new TextEncoder();
-            const data = enc.encode(str);
-            const hash = await crypto.subtle.digest('SHA-256', data);
-            const bytes = new Uint8Array(hash);
-            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-          }
-
-          // find the overlay checkbox element in layers control and hook click
-          function hookSurveyCheckbox() {
-            try {
-              if (!layersControlContainer) return;
-              // find label that contains 'Survey point'
-              const labels = layersControlContainer.querySelectorAll('label');
-              for (const lbl of labels) {
-                if (lbl.textContent && lbl.textContent.trim().includes('Survey point')) {
-                  const input = lbl.querySelector('input[type="checkbox"]');
-                  if (!input) return;
-
-                  // intercept click to prompt for password before toggling
-                  input.addEventListener('click', async (e) => {
-                    e.preventDefault(); // prevent Leaflet from toggling immediately
-
-                    // If already unlocked, perform normal toggle behavior manually
-                    if (surveyUnlocked) {
-                      if (input.checked) {
-                        // currently checked -> user wants to uncheck
-                        input.checked = false;
-                        if (surveyPointLayer && map.hasLayer(surveyPointLayer)) {
-                          map.removeLayer(surveyPointLayer);
-                        }
-                      } else {
-                        // currently unchecked -> user wants to check
-                        input.checked = true;
-                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                          surveyPointLayer.addTo(map);
-                        }
-                      }
-                      return;
-                    }
-
-                    // If currently unchecked, user attempts to enable -> ask password
-                    if (!input.checked) {
-                      const res = await showPromptBox({
-                        title: 'Password required',
-                        message: 'Enter password to show Survey point layer:',
-                        placeholder: 'Password',
-                        confirmText: 'OK',
-                        cancelText: 'Cancel',
-                        width: 360
-                      });
-
-                      if (!res.confirmed) {
-                        // User cancelled or closed the prompt -> do nothing (remain unchecked)
-                        return;
-                      }
-
-                      const val = res.value || '';
-                      const h = await sha256hex(val);
-                      if (h === SURVEY_PW_HASH) {
-                        surveyUnlocked = true;
-                        input.checked = true; // Only check the box on correct password
-                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                          surveyPointLayer.addTo(map);
-                        }
-                      } else {
-                        showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
-                        // remain unchecked
-                      }
-                    } else {
-                      // currently checked (shouldn't usually happen before unlock) -> uncheck
-                      input.checked = false;
-                      if (surveyPointLayer && map.hasLayer(surveyPointLayer)) {
-                        map.removeLayer(surveyPointLayer);
-                      }
-                    }
-                  }, { once: false });
-                  // done hooking
-                  return;
-                }
-              }
-            } catch (ex) {
-              // ignore hook errors
-            }
-          }
-
-          // wait for layers control container to be available in DOM
-          setTimeout(hookSurveyCheckbox, 200);
         });
 
     drawnItems = new L.FeatureGroup().addTo(map);
