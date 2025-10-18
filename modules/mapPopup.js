@@ -399,11 +399,12 @@ export function initMapPopup({
 
                   // intercept click only the first time
                   input.addEventListener('change', async (e) => {
-                    // if it's being unchecked, allow
-                    if (!input.checked) return;
-                    if (surveyUnlocked) return;
-                    e.preventDefault();
-                    // show prompt for password
+                    if (!input.checked) return; // Allow unchecking without prompt
+                    if (surveyUnlocked) return; // Skip prompt if already unlocked
+
+                    e.preventDefault(); // Prevent immediate check
+                    input.checked = false; // Ensure checkbox remains unchecked initially
+
                     const res = await showPromptBox({
                       title: 'Password required',
                       message: 'Enter password to show Survey point layer:',
@@ -412,27 +413,22 @@ export function initMapPopup({
                       cancelText: 'Cancel',
                       width: 360
                     });
+
                     if (!res.confirmed) {
-                      // user cancelled -> uncheck
-                      input.checked = false;
+                      // User cancelled or closed the prompt
                       return;
                     }
+
                     const val = res.value || '';
                     const h = await sha256hex(val);
                     if (h === SURVEY_PW_HASH) {
                       surveyUnlocked = true;
-                      // ensure layer is added to map
+                      input.checked = true; // Only check the box on correct password
                       if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
                         surveyPointLayer.addTo(map);
                       }
                     } else {
-                      // wrong password -> show message and uncheck + hide option
                       showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
-                      input.checked = false;
-                      // hide the entire label to prevent further attempts
-                      lbl.style.display = 'none';
-                      // also remove overlay from control
-                      try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
                     }
                   }, { once: false });
                   // done hooking
