@@ -1,4 +1,5 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
+import { showPromptBox, showMessageBox } from './messageBox.js';
 
 let importKmlFileFn = null;
 
@@ -367,7 +368,84 @@ export function initMapPopup({
             return marker;
           }).filter(Boolean);
           surveyPointLayer = L.layerGroup(markers);
+          // add overlay but intercept first-time enable with password
           layersControl.addOverlay(surveyPointLayer, 'Survey point');
+
+          // store state whether survey was unlocked
+          let surveyUnlocked = false;
+
+          // precomputed SHA-256 of the password "HKBRmap0505"
+          const SURVEY_PW_HASH = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
+
+          // helper to compute sha256 hex
+          async function sha256hex(str) {
+            const enc = new TextEncoder();
+            const data = enc.encode(str);
+            const hash = await crypto.subtle.digest('SHA-256', data);
+            const bytes = new Uint8Array(hash);
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+          }
+
+          // find the overlay checkbox element in layers control and hook click
+          function hookSurveyCheckbox() {
+            try {
+              if (!layersControlContainer) return;
+              // find label that contains 'Survey point'
+              const labels = layersControlContainer.querySelectorAll('label');
+              for (const lbl of labels) {
+                if (lbl.textContent && lbl.textContent.trim().includes('Survey point')) {
+                  const input = lbl.querySelector('input[type="checkbox"]');
+                  if (!input) return;
+
+                  // intercept click only the first time
+                  input.addEventListener('change', async (e) => {
+                    // if it's being unchecked, allow
+                    if (!input.checked) return;
+                    if (surveyUnlocked) return;
+                    e.preventDefault();
+                    // show prompt for password
+                    const res = await showPromptBox({
+                      title: 'Password required',
+                      message: 'Enter password to show Survey point layer:',
+                      placeholder: 'Password',
+                      confirmText: 'OK',
+                      cancelText: 'Cancel',
+                      width: 360
+                    });
+                    if (!res.confirmed) {
+                      // user cancelled -> uncheck
+                      input.checked = false;
+                      return;
+                    }
+                    const val = res.value || '';
+                    const h = await sha256hex(val);
+                    if (h === SURVEY_PW_HASH) {
+                      surveyUnlocked = true;
+                      // ensure layer is added to map
+                      if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                        surveyPointLayer.addTo(map);
+                      }
+                    } else {
+                      // wrong password -> show message and uncheck + hide option
+                      showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                      input.checked = false;
+                      // hide the entire label to prevent further attempts
+                      lbl.style.display = 'none';
+                      // also remove overlay from control
+                      try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
+                    }
+                  }, { once: false });
+                  // done hooking
+                  return;
+                }
+              }
+            } catch (ex) {
+              // ignore hook errors
+            }
+          }
+
+          // wait for layers control container to be available in DOM
+          setTimeout(hookSurveyCheckbox, 200);
         });
 
     drawnItems = new L.FeatureGroup().addTo(map);
