@@ -397,38 +397,62 @@ export function initMapPopup({
                   const input = lbl.querySelector('input[type="checkbox"]');
                   if (!input) return;
 
-                  // intercept click only the first time
-                  input.addEventListener('change', async (e) => {
-                    if (!input.checked) return; // Allow unchecking without prompt
-                    if (surveyUnlocked) return; // Skip prompt if already unlocked
+                  // intercept click to prompt for password before toggling
+                  input.addEventListener('click', async (e) => {
+                    e.preventDefault(); // prevent Leaflet from toggling immediately
 
-                    e.preventDefault(); // Prevent immediate check
-                    input.checked = false; // Ensure checkbox remains unchecked initially
-
-                    const res = await showPromptBox({
-                      title: 'Password required',
-                      message: 'Enter password to show Survey point layer:',
-                      placeholder: 'Password',
-                      confirmText: 'OK',
-                      cancelText: 'Cancel',
-                      width: 360
-                    });
-
-                    if (!res.confirmed) {
-                      // User cancelled or closed the prompt
+                    // If already unlocked, perform normal toggle behavior manually
+                    if (surveyUnlocked) {
+                      if (input.checked) {
+                        // currently checked -> user wants to uncheck
+                        input.checked = false;
+                        if (surveyPointLayer && map.hasLayer(surveyPointLayer)) {
+                          map.removeLayer(surveyPointLayer);
+                        }
+                      } else {
+                        // currently unchecked -> user wants to check
+                        input.checked = true;
+                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                          surveyPointLayer.addTo(map);
+                        }
+                      }
                       return;
                     }
 
-                    const val = res.value || '';
-                    const h = await sha256hex(val);
-                    if (h === SURVEY_PW_HASH) {
-                      surveyUnlocked = true;
-                      input.checked = true; // Only check the box on correct password
-                      if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                        surveyPointLayer.addTo(map);
+                    // If currently unchecked, user attempts to enable -> ask password
+                    if (!input.checked) {
+                      const res = await showPromptBox({
+                        title: 'Password required',
+                        message: 'Enter password to show Survey point layer:',
+                        placeholder: 'Password',
+                        confirmText: 'OK',
+                        cancelText: 'Cancel',
+                        width: 360
+                      });
+
+                      if (!res.confirmed) {
+                        // User cancelled or closed the prompt -> do nothing (remain unchecked)
+                        return;
+                      }
+
+                      const val = res.value || '';
+                      const h = await sha256hex(val);
+                      if (h === SURVEY_PW_HASH) {
+                        surveyUnlocked = true;
+                        input.checked = true; // Only check the box on correct password
+                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                          surveyPointLayer.addTo(map);
+                        }
+                      } else {
+                        showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                        // remain unchecked
                       }
                     } else {
-                      showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                      // currently checked (shouldn't usually happen before unlock) -> uncheck
+                      input.checked = false;
+                      if (surveyPointLayer && map.hasLayer(surveyPointLayer)) {
+                        map.removeLayer(surveyPointLayer);
+                      }
                     }
                   }, { once: false });
                   // done hooking
