@@ -397,49 +397,40 @@ export function initMapPopup({
                   const input = lbl.querySelector('input[type="checkbox"]');
                   if (!input) return;
 
-                  // intercept clicks in capture phase so the checkbox's default toggle
-                  // is prevented until password is validated
-                  input.addEventListener('click', async (e) => {
-                    try {
-                      // if already unlocked, let default behavior occur (allow uncheck)
-                      if (surveyUnlocked) return;
-                      // if currently unchecked, this click would check it -> intercept
-                      if (!input.checked) {
-                        e.preventDefault();
-                        e.stopPropagation();
+                  // intercept click only the first time
+                  input.addEventListener('change', async (e) => {
+                    if (!input.checked) return; // Allow unchecking without prompt
+                    if (surveyUnlocked) return; // Skip prompt if already unlocked
 
-                        const res = await showPromptBox({
-                          title: 'Password required',
-                          message: 'Enter password to show Survey point layer:',
-                          placeholder: 'Password',
-                          confirmText: 'OK',
-                          cancelText: 'Cancel',
-                          width: 360
-                        });
+                    e.preventDefault(); // Prevent immediate check
+                    input.checked = false; // Ensure checkbox remains unchecked initially
 
-                        if (!res.confirmed) {
-                          // cancelled or closed -> do nothing (remain unchecked)
-                          return;
-                        }
+                    const res = await showPromptBox({
+                      title: 'Password required',
+                      message: 'Enter password to show Survey point layer:',
+                      placeholder: 'Password',
+                      confirmText: 'OK',
+                      cancelText: 'Cancel',
+                      width: 360
+                    });
 
-                        const val = res.value || '';
-                        const h = await sha256hex(val);
-                        if (h === SURVEY_PW_HASH) {
-                          surveyUnlocked = true;
-                          // manually check and add layer
-                          input.checked = true;
-                          if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                            surveyPointLayer.addTo(map);
-                          }
-                        } else {
-                          showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
-                        }
-                      }
-                      // if input.checked was true before click, allow unchecking to proceed
-                    } catch (err) {
-                      // swallow to avoid breaking UI
+                    if (!res.confirmed) {
+                      // User cancelled or closed the prompt
+                      return;
                     }
-                  }, { capture: true });
+
+                    const val = res.value || '';
+                    const h = await sha256hex(val);
+                    if (h === SURVEY_PW_HASH) {
+                      surveyUnlocked = true;
+                      input.checked = true; // Only check the box on correct password
+                      if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                        surveyPointLayer.addTo(map);
+                      }
+                    } else {
+                      showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                    }
+                  }, { once: false });
                   // done hooking
                   return;
                 }
