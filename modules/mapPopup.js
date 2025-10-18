@@ -398,48 +398,56 @@ export function initMapPopup({
                   if (!input) return;
 
                   // intercept click only the first time
-                  input.addEventListener('change', async (e) => {
-                    // if it's being unchecked, allow default behavior (remove layer)
-                    if (!input.checked) return;
-                    if (surveyUnlocked) return;
+                  // intercept the initial user click before Leaflet toggles the layer
+                  // use mousedown in capture phase so we run before Leaflet's handlers
+                  input.addEventListener('mousedown', async (e) => {
+                    try {
+                      // if it's currently checked, user intends to uncheck -> allow
+                      if (input.checked) return;
+                      if (surveyUnlocked) return;
 
-                    // prevent the layer from being shown immediately by unchecking
-                    // Leaflet will add/remove based on checkbox state, so set it back
-                    input.checked = false;
+                      // stop the default toggle and Leaflet handlers
+                      e.preventDefault();
+                      e.stopImmediatePropagation?.();
+                      e.stopPropagation();
 
-                    // show prompt for password
-                    const res = await showPromptBox({
-                      title: 'Password required',
-                      message: 'Enter password to show Survey point layer:',
-                      placeholder: 'Password',
-                      confirmText: 'OK',
-                      cancelText: 'Cancel',
-                      width: 360
-                    });
-                    // user cancelled or closed -> keep unchecked and do nothing
-                    if (!res.confirmed) {
-                      input.checked = false;
-                      return;
-                    }
-                    const val = res.value || '';
-                    const h = await sha256hex(val);
-                    if (h === SURVEY_PW_HASH) {
-                      surveyUnlocked = true;
-                      // add layer to map only after successful auth
-                      if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                        map.addLayer(surveyPointLayer);
+                      // prompt for password
+                      const res = await showPromptBox({
+                        title: 'Password required',
+                        message: 'Enter password to show Survey point layer:',
+                        placeholder: 'Password',
+                        confirmText: 'OK',
+                        cancelText: 'Cancel',
+                        width: 360
+                      });
+
+                      if (!res.confirmed) {
+                        // user cancelled -> keep unchecked
+                        input.checked = false;
+                        return;
                       }
-                      // reflect checked state in UI
-                      input.checked = true;
-                    } else {
-                      // wrong password -> show message and keep unchecked
-                      showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+
+                      const val = res.value || '';
+                      const h = await sha256hex(val);
+                      if (h === SURVEY_PW_HASH) {
+                        surveyUnlocked = true;
+                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                          map.addLayer(surveyPointLayer);
+                        }
+                        // visually check the box
+                        input.checked = true;
+                      } else {
+                        // wrong password -> show message and keep unchecked
+                        showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                        input.checked = false;
+                        lbl.style.display = 'none';
+                        try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
+                      }
+                    } catch (err) {
+                      // fallback: ensure box remains unchecked on error
                       input.checked = false;
-                      // hide the entire label to prevent further attempts
-                      lbl.style.display = 'none';
-                      try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
                     }
-                  });
+                  }, true);
                   // done hooking
                   return;
                 }
