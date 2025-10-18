@@ -399,10 +399,14 @@ export function initMapPopup({
 
                   // intercept click only the first time
                   input.addEventListener('change', async (e) => {
-                    // if it's being unchecked, allow
+                    // if it's being unchecked, allow default behavior (remove layer)
                     if (!input.checked) return;
                     if (surveyUnlocked) return;
-                    e.preventDefault();
+
+                    // prevent the layer from being shown immediately by unchecking
+                    // Leaflet will add/remove based on checkbox state, so set it back
+                    input.checked = false;
+
                     // show prompt for password
                     const res = await showPromptBox({
                       title: 'Password required',
@@ -412,8 +416,8 @@ export function initMapPopup({
                       cancelText: 'Cancel',
                       width: 360
                     });
+                    // user cancelled or closed -> keep unchecked and do nothing
                     if (!res.confirmed) {
-                      // user cancelled -> uncheck
                       input.checked = false;
                       return;
                     }
@@ -421,20 +425,21 @@ export function initMapPopup({
                     const h = await sha256hex(val);
                     if (h === SURVEY_PW_HASH) {
                       surveyUnlocked = true;
-                      // ensure layer is added to map
+                      // add layer to map only after successful auth
                       if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                        surveyPointLayer.addTo(map);
+                        map.addLayer(surveyPointLayer);
                       }
+                      // reflect checked state in UI
+                      input.checked = true;
                     } else {
-                      // wrong password -> show message and uncheck + hide option
+                      // wrong password -> show message and keep unchecked
                       showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
                       input.checked = false;
                       // hide the entire label to prevent further attempts
                       lbl.style.display = 'none';
-                      // also remove overlay from control
                       try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
                     }
-                  }, { once: false });
+                  });
                   // done hooking
                   return;
                 }
