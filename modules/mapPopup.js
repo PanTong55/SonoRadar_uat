@@ -398,56 +398,43 @@ export function initMapPopup({
                   if (!input) return;
 
                   // intercept click only the first time
-                  // intercept the initial user click before Leaflet toggles the layer
-                  // use mousedown in capture phase so we run before Leaflet's handlers
-                  input.addEventListener('mousedown', async (e) => {
-                    try {
-                      // if it's currently checked, user intends to uncheck -> allow
-                      if (input.checked) return;
-                      if (surveyUnlocked) return;
-
-                      // stop the default toggle and Leaflet handlers
-                      e.preventDefault();
-                      e.stopImmediatePropagation?.();
-                      e.stopPropagation();
-
-                      // prompt for password
-                      const res = await showPromptBox({
-                        title: 'Password required',
-                        message: 'Enter password to show Survey point layer:',
-                        placeholder: 'Password',
-                        confirmText: 'OK',
-                        cancelText: 'Cancel',
-                        width: 360
-                      });
-
-                      if (!res.confirmed) {
-                        // user cancelled -> keep unchecked
-                        input.checked = false;
-                        return;
-                      }
-
-                      const val = res.value || '';
-                      const h = await sha256hex(val);
-                      if (h === SURVEY_PW_HASH) {
-                        surveyUnlocked = true;
-                        if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
-                          map.addLayer(surveyPointLayer);
-                        }
-                        // visually check the box
-                        input.checked = true;
-                      } else {
-                        // wrong password -> show message and keep unchecked
-                        showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
-                        input.checked = false;
-                        lbl.style.display = 'none';
-                        try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
-                      }
-                    } catch (err) {
-                      // fallback: ensure box remains unchecked on error
+                  input.addEventListener('change', async (e) => {
+                    // if it's being unchecked, allow
+                    if (!input.checked) return;
+                    if (surveyUnlocked) return;
+                    e.preventDefault();
+                    // show prompt for password
+                    const res = await showPromptBox({
+                      title: 'Password required',
+                      message: 'Enter password to show Survey point layer:',
+                      placeholder: 'Password',
+                      confirmText: 'OK',
+                      cancelText: 'Cancel',
+                      width: 360
+                    });
+                    if (!res.confirmed) {
+                      // user cancelled -> uncheck
                       input.checked = false;
+                      return;
                     }
-                  }, true);
+                    const val = res.value || '';
+                    const h = await sha256hex(val);
+                    if (h === SURVEY_PW_HASH) {
+                      surveyUnlocked = true;
+                      // ensure layer is added to map
+                      if (surveyPointLayer && !map.hasLayer(surveyPointLayer)) {
+                        surveyPointLayer.addTo(map);
+                      }
+                    } else {
+                      // wrong password -> show message and uncheck + hide option
+                      showMessageBox({ message: 'Wrong Password', title: 'Error', confirmText: 'OK' });
+                      input.checked = false;
+                      // hide the entire label to prevent further attempts
+                      lbl.style.display = 'none';
+                      // also remove overlay from control
+                      try { layersControl.removeLayer(surveyPointLayer); } catch (ex) {}
+                    }
+                  }, { once: false });
                   // done hooking
                   return;
                 }
