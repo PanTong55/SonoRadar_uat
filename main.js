@@ -24,7 +24,7 @@ import { initDropdown } from './modules/dropdown.js';
 import { showMessageBox } from './modules/messageBox.js';
 import { initAutoIdPanel } from './modules/autoIdPanel.js';
 import { initFreqContextMenu } from './modules/freqContextMenu.js';
-import { getCurrentIndex, getFileList, toggleFileIcon, setFileList, clearFileList, getFileIconState, getFileNote, setFileNote, getFileMetadata, setFileMetadata, clearTrashFiles, getTrashFileCount, getCurrentFile } from './modules/fileState.js';
+import { getCurrentIndex, getFileList, toggleFileIcon, setFileList, clearFileList, getFileIconState, getFileNote, setFileNote, getFileMetadata, setFileMetadata, clearTrashFiles, getTrashFileCount, getCurrentFile, getTimeExpansionMode, setTimeExpansionMode, toggleTimeExpansionMode } from './modules/fileState.js';
 
 const spectrogramHeight = 800;
 let sidebarControl;
@@ -66,6 +66,11 @@ const fftSizeBtn = document.getElementById('fftSizeInput');
 let selectionExpandMode = false;
 let expandHistory = [];
 let currentExpandBlob = null;
+// When true, prevent applySampleRate from auto-adjusting the displayed
+// freqMin/freqMax input values. Used when reloading the file due to
+// UI-only actions (e.g. toggling Time Expansion) where we don't want to
+// override user's displayed frequency settings.
+let suppressFreqValueAdjustment = false;
 const expandBackBtn = document.getElementById('expandBackBtn');
 const expandBackCount = document.getElementById('expandBackCount');
 let ignoreNextPause = false;
@@ -108,6 +113,84 @@ function updateExpandBackBtn() {
     expandBackCount.textContent = String(count);
     expandBackCount.style.display = count > 0 ? 'flex' : 'none';
   }
+}
+// Time Expansion UI helper
+const timeExpBtn = document.getElementById('timeexpBtn');
+function applyTimeExpansionUI() {
+  const active = getTimeExpansionMode();
+  if (timeExpBtn) {
+    if (active) {
+      timeExpBtn.classList.add('active');
+      timeExpBtn.title = 'Exit 10x Time Expansion';
+    } else {
+      timeExpBtn.classList.remove('active');
+      timeExpBtn.title = '10x Time Expansion';
+    }
+  }
+  document.body.classList.toggle('timeexp-open', active);
+  // adjust displayed freq input maxima and values
+  const maxFreq = currentSampleRate / 2000;
+  const dispMax = active ? (maxFreq * 10) : maxFreq;
+  freqMaxInput.max = dispMax;
+  freqMinInput.max = dispMax;
+  renderAxes();
+}
+
+if (timeExpBtn) {
+  timeExpBtn.addEventListener('click', async () => {
+    // If currently in Time Expansion mode and the user is attempting to
+    // exit it, disallow exiting when the currently loaded audio is
+    // longer than 20 seconds.
+    const currentlyActive = getTimeExpansionMode();
+    if (currentlyActive) {
+      const ws = getWavesurfer();
+      const curDur = ws ? ws.getDuration() : 0;
+      if (curDur > 20) {
+        showMessageBox({
+          title: 'Warning',
+          message: 'Cannot exit time-expansion mode for >20s recording.'
+        });
+        return;
+      }
+    }
+
+    const newState = toggleTimeExpansionMode();
+    setTimeExpansionMode(newState); // ensure saved
+    applyTimeExpansionUI();
+
+
+    try {
+      const idx = getCurrentIndex();
+      if (idx >= 0 && fileLoaderControl && typeof fileLoaderControl.loadFileAtIndex === 'function') {
+        suppressFreqValueAdjustment = true;
+        try {
+          await fileLoaderControl.loadFileAtIndex(idx);
+        } finally {
+          suppressFreqValueAdjustment = false;
+        }
+      } else {
+        // ensure axes and plugin reflect new mode even if no file to reload
+        renderAxes();
+        replacePlugin(
+          getCurrentColorMap(),
+          spectrogramHeight,
+          currentFreqMin,
+          currentFreqMax,
+          getOverlapPercent(),
+          () => {
+            duration = getWavesurfer().getDuration();
+            zoomControl.applyZoom();
+            renderAxes();
+            freqHoverControl?.refreshHover();
+            autoIdControl?.updateMarkers();
+            updateSpectrogramSettingsText();
+          }
+        );
+      }
+    } catch (err) {
+      console.error('Error reloading file after Time Expansion toggle', err);
+    }
+  });
 }
 let stopBtnRafId = null;
 function showStopButton() {
@@ -394,23 +477,31 @@ async function applySampleRate(rate, reloadFile = true) {
 const prevRate = currentSampleRate;
 currentSampleRate = rate;
 const maxFreq = currentSampleRate / 2000;
-freqMaxInput.max = maxFreq;
-freqMinInput.max = maxFreq;
+  // Displayed max should reflect Time Expansion mode (UI shows values *10)
+  const dispMax = getTimeExpansionMode() ? (maxFreq * 10) : maxFreq;
+  freqMaxInput.max = dispMax;
+  freqMinInput.max = dispMax;
 
 const isManual = selectedSampleRate !== 'auto';
 
-if (isManual && rate < prevRate) {
-freqMaxInput.value = maxFreq;
-} else if (parseFloat(freqMaxInput.value) > maxFreq) {
-freqMaxInput.value = maxFreq;
-}
+  // When updating displayed inputs, convert back and forth between display
+  // values and internal kHz values. Displayed values are multiplied by 10 in
+  // time expansion mode, so convert accordingly when reading input values.
+  const divisor = getTimeExpansionMode() ? 10 : 1;
+  if (!suppressFreqValueAdjustment) {
+    if (isManual && rate < prevRate) {
+      freqMaxInput.value = formatFreqValue(maxFreq);
+    } else if (parseFloat(freqMaxInput.value) > (maxFreq * divisor)) {
+      freqMaxInput.value = formatFreqValue(maxFreq);
+    }
+  }
 
-if (parseFloat(freqMinInput.value) > maxFreq) {
-freqMinInput.value = maxFreq;
-}
+  if (parseFloat(freqMinInput.value) > (maxFreq * divisor)) {
+    freqMinInput.value = formatFreqValue(maxFreq);
+  }
 
-currentFreqMax = parseFloat(freqMaxInput.value);
-currentFreqMin = parseFloat(freqMinInput.value);
+  currentFreqMax = parseFloat(freqMaxInput.value) / divisor;
+  currentFreqMin = parseFloat(freqMinInput.value) / divisor;
 
 if (getWavesurfer()) {
 getWavesurfer().options.sampleRate = currentSampleRate;
@@ -470,8 +561,9 @@ const renderAxes = () => {
     zoomLevel: zoomControl.getZoomLevel(),
     axisElement: timeAxis,
     labelElement: timeLabel,
+    timeExpansion: getTimeExpansionMode(),
   });
-
+  
 drawFrequencyGrid({
 gridCanvas: freqGrid,
 labelContainer: freqAxisContainer,
@@ -479,6 +571,7 @@ containerElement: container,
 spectrogramHeight,
 maxFrequency: currentFreqMax - currentFreqMin,
 offsetKHz: currentFreqMin,
+    timeExpansion: getTimeExpansionMode(),
 });
 
 if (!freqHoverControl) {
@@ -717,8 +810,13 @@ const freqMinInput = document.getElementById('freqMinInput');
 const freqMaxInput = document.getElementById('freqMaxInput');
 const applyFreqRangeBtn = document.getElementById('applyFreqRangeBtn');
 
-freqMaxInput.max = currentSampleRate / 2000;
-freqMinInput.max = freqMaxInput.max;
+// initialize displayed max according to Time Expansion mode
+const initMaxFreq = currentSampleRate / 2000;
+const initDispMax = getTimeExpansionMode() ? (initMaxFreq * 10) : initMaxFreq;
+freqMaxInput.max = initDispMax;
+freqMinInput.max = initDispMax;
+// Ensure UI reflects current Time Expansion mode on startup
+applyTimeExpansionUI();
 
 const sampleRateDropdown = initDropdown('sampleRateInput', [
 { label: 'Auto', value: 'auto' },
@@ -872,22 +970,30 @@ function getAutoOverlapPercent() {
 }
 
 function formatFreqValue(value) {
-  return Math.abs(value - Math.round(value)) < 0.001
-    ? String(Math.round(value))
-    : value.toFixed(1);
+  // value is internal kHz value. If Time Expansion mode is active, the UI
+  // should display frequency values multiplied by 10.
+  const timeExp = getTimeExpansionMode();
+  const display = timeExp ? (value * 10) : value;
+  return Math.abs(display - Math.round(display)) < 0.001
+    ? String(Math.round(display))
+    : display.toFixed(1);
 }
 
 applyFreqRangeBtn.addEventListener('click', () => {
-const min = Math.max(0, parseFloat(freqMinInput.value));
-const maxAllowed = currentSampleRate / 2000;
-const max = Math.min(maxAllowed, parseFloat(freqMaxInput.value));
+  const dispMin = Math.max(0, parseFloat(freqMinInput.value));
+  const maxAllowed = currentSampleRate / 2000;
+  const divisor = getTimeExpansionMode() ? 10 : 1;
+  const dispMax = Math.min(maxAllowed * divisor, parseFloat(freqMaxInput.value));
 
-if (isNaN(min) || isNaN(max) || min >= max) {
-alert('Please enter valid frequency values. Min must be less than Max.');
-return;
-}
+  if (isNaN(dispMin) || isNaN(dispMax) || dispMin >= dispMax) {
+    alert('Please enter valid frequency values. Min must be less than Max.');
+    return;
+  }
 
-updateFrequencyRange(min, max);
+  // convert displayed values back to internal kHz space
+  const min = dispMin / divisor;
+  const max = dispMax / divisor;
+  updateFrequencyRange(min, max);
 });
 
 document.getElementById('fileInputBtn').addEventListener('click', () => {

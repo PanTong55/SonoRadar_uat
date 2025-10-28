@@ -6,12 +6,13 @@ export function drawTimeAxis({
   zoomLevel,
   axisElement,
   labelElement,
+  timeExpansion = false,
 }) {
   const pxPerSec = zoomLevel;
   const totalWidth = duration * pxPerSec;
 
-  const offsetX = 65; // ✅ 預留 freq label 寬度
-
+  // step selection unchanged (ticks positions unchanged). We alter only how
+  // numeric labels are displayed when timeExpansion is active (numbers shrink by 10x).
   let step = 1000;
   if (pxPerSec >= 800) step = 100;
   else if (pxPerSec >= 500) step = 200;
@@ -34,12 +35,14 @@ export function drawTimeAxis({
       `);
     }
 
-    // 置中數字
-    const label = step >= 1000 ? `${(t / 1000)}` : `${t}`;
-    const isZero = label === '0';
+    // 置中數字 — 顯示值在 timeExpansion 時縮小 10 倍（數字顯示變為原來的 0.1x）
+    const baseLabel = step >= 1000 ? (t / 1000) : t;
+    const displayLabel = timeExpansion ? (baseLabel / 10) : baseLabel;
+    const labelStr = (step >= 1000 && !timeExpansion) ? `${baseLabel}` : `${displayLabel}`;
+    const isZero = Number(displayLabel) === 0;
     const extraClass = isZero ? ' zero-label' : '';
     html.push(`
-      <span class="time-axis-label${extraClass}" style="left:${left}px">${label}</span>
+      <span class="time-axis-label${extraClass}" style="left:${left}px">${labelStr}</span>
     `);
   }
 
@@ -55,6 +58,7 @@ export function drawFrequencyGrid({
   spectrogramHeight = 800,
   maxFrequency = 128,
   offsetKHz = 0,
+  timeExpansion = false,
 }) {
   const width = containerElement.scrollWidth;
   gridCanvas.width = width;
@@ -67,9 +71,13 @@ export function drawFrequencyGrid({
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
   ctx.lineWidth = 0.4;
 
-  const majorStep = 10;
-  const minorStep = 5;
+  // Decide internal step sizes. When timeExpansion is active the displayed
+  // frequency values are multiplied by 10, but we want the displayed major
+  // ticks to be every 10 kHz and minor ticks every 5 kHz. Since display =
+  // internal * 10, internal steps should be 1 kHz (major) and 0.5 kHz (minor).
   const range = maxFrequency;
+  const majorStep = timeExpansion ? 1 : 10;
+  const minorStep = timeExpansion ? 0.5 : 5;
 
   for (let f = 0; f <= range; f += majorStep) {
     const y = (1 - f / range) * spectrogramHeight;
@@ -95,13 +103,15 @@ export function drawFrequencyGrid({
     label.className = 'freq-label-static freq-axis-label';
     label.style.top = `${y - 1}px`;
     const freqValue = f + offsetKHz;
-    label.textContent = Number(freqValue.toFixed(1)).toString();
+    const displayValue = timeExpansion ? (freqValue * 10) : freqValue;
+    label.textContent = Number(displayValue.toFixed(1)).toString();
     labelContainer.appendChild(label);
   }
 
   // 新增次刻度 (minor tick)
   for (let f = 0; f <= range; f += minorStep) {
-    if (f % majorStep === 0) continue;
+    // skip positions that are effectively on major tick multiples (tolerance for floats)
+    if (Math.abs((f / majorStep) - Math.round(f / majorStep)) < 1e-6) continue;
 
     const y = Math.round((1 - f / range) * spectrogramHeight);
 

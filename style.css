@@ -1132,6 +1132,10 @@ body.map-open #mapBtn {
 body.autoid-open #autoIdBtn {
   background-color: #007bff;
 }
+/* Time Expansion active state — same blue used for setting/map/autoid */
+body.timeexp-open #timeexpBtn {
+  background-color: #007bff;
+}
 
 input.tag-button {
   width: 90px;
