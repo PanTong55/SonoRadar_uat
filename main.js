@@ -169,8 +169,6 @@ if (timeExpBtn) {
           suppressFreqValueAdjustment = false;
         }
       } else {
-        // ensure axes and plugin reflect new mode even if no file to reload
-        renderAxes();
         replacePlugin(
           getCurrentColorMap(),
           spectrogramHeight,
