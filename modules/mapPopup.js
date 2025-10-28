@@ -81,10 +81,9 @@ export function initMapPopup({
   let drawControlVisible = false;
   let layersControl = null;
   let hkgridLayer = null;
-  // overlays handling (moved to outer scope so togglePopup can access)
-  let overlaysPending = []; // { layer, name }
-  let overlaysLoaded = false; // whether overlays have been added to layersControl
-  let overlaysPromptShown = false; // whether we already showed the password prompt (only show once)
+  let overlaysPending = [];
+  let overlaysLoaded = false;
+  let overlaysPromptShown = false;
   const HASHED_PASSWORD = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
 
   function loadOverlays() {
@@ -93,7 +92,6 @@ export function initMapPopup({
       try {
         layersControl.addOverlay(layer, name);
       } catch (e) {
-        // ignore
       }
     });
     overlaysPending = [];
@@ -144,7 +142,6 @@ export function initMapPopup({
         showPasswordPrompt();
       }
     } catch (e) {
-      // ignore
     }
   }
   const coordScaleWrapper = mapDiv.querySelector('.coord-scale-wrapper');
@@ -315,10 +312,6 @@ export function initMapPopup({
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { ...esriAttr, crossOrigin: 'anonymous' }
     );
-    const esriStreets = L.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-      { ...esriAttr, crossOrigin: 'anonymous' }
-    );    
     const cartoLight = L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       { ...cartoAttr, crossOrigin: 'anonymous' }
@@ -339,27 +332,22 @@ export function initMapPopup({
       'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
       { ...googleAttr, crossOrigin: 'anonymous' }
     );
-
     const hkImageryLayer = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/imagery/wgs84/{z}/{x}/{y}.png',
       { ...imageryAttr, minZoom: 0, maxZoom: 19, crossOrigin: 'anonymous' }
     );
-
     const hkVectorBase = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png',
       { ...landsdAttr, maxZoom: 20, minZoom: 10, crossOrigin: 'anonymous' }
     );
-
     const hkVectorLabel = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png',
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
-
     const hkImageryLabel = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png',
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
-
     const googleTerrain = L.tileLayer(
       'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
       {
@@ -379,8 +367,7 @@ export function initMapPopup({
     });
 
     const baseLayers = {
-      'OpenStreetMap': streets,
-      'Esri Streets': esriStreets,      
+      'OpenStreetMap': streets, 
       'Esri Satellite': esriSatellite,
       'Carto Light': cartoLight,
       'Carto Dark': cartoDark,
