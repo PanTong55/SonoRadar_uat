@@ -133,7 +133,6 @@ function applyTimeExpansionUI() {
   const dispMax = active ? (maxFreq * 10) : maxFreq;
   freqMaxInput.max = dispMax;
   freqMinInput.max = dispMax;
-  renderAxes();
 }
 
 if (timeExpBtn) {
