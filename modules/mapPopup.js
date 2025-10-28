@@ -113,11 +113,11 @@ export function initMapPopup({
 
   function promptForPasswordIfNeeded() {
     try {
-      if (overlaysPending && overlaysPending.length > 0 && !overlaysLoaded && !overlaysPromptShown) {
+      if (overlaysPending && overlaysPending.length > 0 && !overlaysLoaded && !overlaysPromptShown && popup && popup.style.display === 'block') {
         overlaysPromptShown = true;
-        // show a password prompt that allows retry on wrong password
         const showPasswordPrompt = () => {
           showMessageBox({
+            title: 'Professional option',
             message: 'To access more layers, please enter password.',
             confirmText: 'Confirm',
             cancelText: 'Cancel',
