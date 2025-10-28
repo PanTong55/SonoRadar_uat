@@ -316,7 +316,7 @@ export function initMapPopup({
       { ...esriAttr, crossOrigin: 'anonymous' }
     );
     const esriStreets = L.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       { ...esriAttr, crossOrigin: 'anonymous' }
     );    
     const cartoLight = L.tileLayer(
