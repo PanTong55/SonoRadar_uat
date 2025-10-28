@@ -315,6 +315,10 @@ export function initMapPopup({
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { ...esriAttr, crossOrigin: 'anonymous' }
     );
+    const esriStreets = L.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+      { ...esriAttr, crossOrigin: 'anonymous' }
+    );    
     const cartoLight = L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       { ...cartoAttr, crossOrigin: 'anonymous' }
@@ -351,15 +355,11 @@ export function initMapPopup({
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
 
-    // separate label layer is required for the imagery group so that
-    // changing basemaps does not inadvertently remove the shared label layer
     const hkImageryLabel = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png',
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
 
-
-    // Google Terrain
     const googleTerrain = L.tileLayer(
       'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
       {
@@ -380,15 +380,16 @@ export function initMapPopup({
 
     const baseLayers = {
       'OpenStreetMap': streets,
+      'Esri Streets': esriStreets,      
       'Esri Satellite': esriSatellite,
       'Carto Light': cartoLight,
       'Carto Dark': cartoDark,
       'Google Streets': googleStreets,
       'Google Satellite': googleSatellite,
-  'Google Hybrid': googleHybrid,
-  'Google Terrain': googleTerrain,
-  'HK Vector': hkVectorGroup,
-  'HK Imagery': hkImageryGroup,
+      'Google Hybrid': googleHybrid,
+      'Google Terrain': googleTerrain,
+      'HK Vector': hkVectorGroup,
+      'HK Imagery': hkImageryGroup,
     };
 
     layersControl = L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
