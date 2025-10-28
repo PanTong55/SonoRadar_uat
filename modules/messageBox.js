@@ -7,7 +7,12 @@ export function showMessageBox({
   cancelText = null,
   onConfirm,
   onCancel,
-  width = 420
+  width = 420,
+  // new options for input field
+  input = false,
+  inputType = 'text', // 'text' | 'password'
+  inputPlaceholder = '',
+  inputValue = ''
 } = {}) {
   const popup = document.createElement('div');
   popup.className = 'map-popup modal-popup';
@@ -30,7 +35,25 @@ export function showMessageBox({
 
   const content = document.createElement('div');
   content.className = 'message-box-content';
-  content.textContent = message;
+  // allow message + optional input field
+  const msgNode = document.createElement('div');
+  msgNode.textContent = message;
+  content.appendChild(msgNode);
+
+  let inputEl = null;
+  if (input) {
+    inputEl = document.createElement('input');
+    inputEl.type = inputType || 'text';
+    inputEl.placeholder = inputPlaceholder || '';
+    inputEl.value = inputValue || '';
+    inputEl.style.marginTop = '8px';
+    inputEl.style.width = '100%';
+    inputEl.style.boxSizing = 'border-box';
+    // apply common input styling via existing CSS rules (input[type=text], input[type=password])
+    content.appendChild(inputEl);
+    // focus input on show
+    setTimeout(() => { inputEl.focus(); }, 10);
+  }
   popup.appendChild(content);
 
   const actions = document.createElement('div');
@@ -53,7 +76,12 @@ export function showMessageBox({
   function close(result) {
     popup.remove();
     if (result === 'confirm' && typeof onConfirm === 'function') {
-      onConfirm();
+      try {
+        if (inputEl) onConfirm(inputEl.value);
+        else onConfirm();
+      } catch (e) {
+        onConfirm();
+      }
     } else if (result === 'cancel' && typeof onCancel === 'function') {
       onCancel();
     }
@@ -62,6 +90,19 @@ export function showMessageBox({
   confirmBtn.addEventListener('click', () => close('confirm'));
   cancelBtn?.addEventListener('click', () => close('cancel'));
   closeBtn.addEventListener('click', () => close('close'));
+
+  if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        close('confirm');
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close('cancel');
+      }
+    });
+  }
 
   document.body.appendChild(popup);
 }

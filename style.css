@@ -1295,10 +1295,6 @@ input.tag-button.editing {
 /* === Map Popup === */
 .map-popup {
   position: absolute;
-  top: 80px;
-  left: 80px;
-  width: 500px;
-  height: 500px;
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);

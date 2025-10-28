@@ -1,4 +1,5 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
+import { showMessageBox } from './messageBox.js';
 
 let importKmlFileFn = null;
 
@@ -54,8 +55,8 @@ export function initMapPopup({
   }
   let popupWidth = parseInt(localStorage.getItem('mapPopupWidth'), 10);
   let popupHeight = parseInt(localStorage.getItem('mapPopupHeight'), 10);
-  if (isNaN(popupWidth) || popupWidth <= 0) popupWidth = 500;
-  if (isNaN(popupHeight) || popupHeight <= 0) popupHeight = 500;
+  if (isNaN(popupWidth) || popupWidth <= 0) popupWidth = 600;
+  if (isNaN(popupHeight) || popupHeight <= 0) popupHeight = 600;
   popup.style.width = `${popupWidth}px`;
   popup.style.height = `${popupHeight}px`;
 
@@ -80,6 +81,72 @@ export function initMapPopup({
   let drawControlVisible = false;
   let layersControl = null;
   let hkgridLayer = null;
+  // overlays handling (moved to outer scope so togglePopup can access)
+  let overlaysPending = []; // { layer, name }
+  let overlaysLoaded = false; // whether overlays have been added to layersControl
+  let overlaysPromptShown = false; // whether we already showed the password prompt (only show once)
+  const HASHED_PASSWORD = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
+
+  function loadOverlays() {
+    if (overlaysLoaded) return;
+    overlaysPending.forEach(({ layer, name }) => {
+      try {
+        layersControl.addOverlay(layer, name);
+      } catch (e) {
+        // ignore
+      }
+    });
+    overlaysPending = [];
+    overlaysLoaded = true;
+  }
+
+  async function computeSHA256Hex(text) {
+    try {
+      const enc = new TextEncoder().encode(text);
+      const buf = await crypto.subtle.digest('SHA-256', enc);
+      const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return hex;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function promptForPasswordIfNeeded() {
+    try {
+      if (overlaysPending && overlaysPending.length > 0 && !overlaysLoaded && !overlaysPromptShown) {
+        overlaysPromptShown = true;
+        // show a password prompt that allows retry on wrong password
+        const showPasswordPrompt = () => {
+          showMessageBox({
+            message: 'To access more layers, please enter password.',
+            confirmText: 'Confirm',
+            cancelText: 'Cancel',
+            input: true,
+            inputType: 'password',
+            onConfirm: async (val) => {
+              const hex = await computeSHA256Hex(val || '');
+              if (hex && hex === HASHED_PASSWORD) {
+                loadOverlays();
+              } else {
+                showMessageBox({
+                  message: 'Wrong password',
+                  confirmText: 'OK',
+                  onConfirm: () => {
+                    showPasswordPrompt();
+                  }
+                });
+              }
+            },
+            onCancel: () => {
+            }
+          });
+        };
+        showPasswordPrompt();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   const coordScaleWrapper = mapDiv.querySelector('.coord-scale-wrapper');
   const coordDisplay = mapDiv.querySelector('#coord-display');
   const noCoordMsg = mapDiv.querySelector('#no-coord-message');
@@ -339,15 +406,18 @@ export function initMapPopup({
             fillOpacity: 0,
           },
         });
-        layersControl.addOverlay(hkgridLayer, '1km Grid');
+        // postpone adding overlay to control until authorized
+        overlaysPending.push({ layer: hkgridLayer, name: '1km Grid' });
+        // if popup is already open, prompt now
+        promptForPasswordIfNeeded();
       });
     
       // Survey point layer
       let surveyPointLayer = null;
       fetch("https://opensheet.elk.sh/1Al_sWwiIU6DtQv6sMFvXb9wBUbBiE-zcYk8vEwV82x8/sheet3")
         .then(r => r.json())
-        .then(points => {
-          const markers = points.map(pt => {
+      .then(points => {
+        const markers = points.map(pt => {
             const lat = parseFloat(pt.Latitude);
             const lon = parseFloat(pt.Longitude);
             if (isNaN(lat) || isNaN(lon)) return null;
@@ -367,7 +437,10 @@ export function initMapPopup({
             return marker;
           }).filter(Boolean);
           surveyPointLayer = L.layerGroup(markers);
-          layersControl.addOverlay(surveyPointLayer, 'Survey point');
+          // postpone adding overlay to control until authorized
+          overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
+          // if popup is already open, prompt now
+          promptForPasswordIfNeeded();
         });
 
     drawnItems = new L.FeatureGroup().addTo(map);
@@ -978,6 +1051,8 @@ export function initMapPopup({
       }
       updateMap();
       updateCursor();
+      // prompt if overlays are pending (handles case where fetch completed earlier or later)
+      promptForPasswordIfNeeded();
     }
   }
 
@@ -1101,12 +1176,23 @@ export function initMapPopup({
   let isMinimized = false;
   
   // 儲存 Floating window 的最後狀態
+  // compute center defaults based on current popup size
+  const centerLeftDefault = Math.max(0, Math.floor((window.innerWidth - popupWidth) / 2));
+  const centerTopDefault = Math.max(0, Math.floor((window.innerHeight - popupHeight) / 2));
   let floatingState = {
-    width: parseInt(localStorage.getItem('mapFloatingWidth'), 10) || 500,
-    height: parseInt(localStorage.getItem('mapFloatingHeight'), 10) || 500,
-    left: parseInt(localStorage.getItem('mapFloatingLeft'), 10) || 100,
-    top: parseInt(localStorage.getItem('mapFloatingTop'), 10) || 100
+    width: parseInt(localStorage.getItem('mapFloatingWidth'), 10) || popupWidth,
+    height: parseInt(localStorage.getItem('mapFloatingHeight'), 10) || popupHeight,
+    left: parseInt(localStorage.getItem('mapFloatingLeft'), 10) || centerLeftDefault,
+    top: parseInt(localStorage.getItem('mapFloatingTop'), 10) || centerTopDefault
   };
+
+  // ensure popup initially positioned at center (or stored position)
+  try {
+    popup.style.left = `${floatingState.left}px`;
+    popup.style.top = `${floatingState.top}px`;
+  } catch (e) {
+    // ignore if popup not in DOM or styles cannot be set yet
+  }
 
   function disableUiPointerEvents() {
     if (viewer) {
