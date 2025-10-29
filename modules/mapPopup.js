@@ -71,6 +71,7 @@ export function initMapPopup({
   let clearKmlBtn = null;
   let drawBtn = null;
   let textBtn = null;
+  let professionalBtn = null;
   let exportBtn = null;
   let textMode = false;
   let textMarkers = [];
@@ -81,9 +82,10 @@ export function initMapPopup({
   let drawControlVisible = false;
   let layersControl = null;
   let hkgridLayer = null;
-  let overlaysPending = [];
-  let overlaysLoaded = false;
-  let overlaysPromptShown = false;
+  // overlays handling (moved to outer scope so togglePopup can access)
+  let overlaysPending = []; // { layer, name }
+  let overlaysLoaded = false; // whether overlays have been added to layersControl
+  let overlaysPromptShown = false; // whether we already showed the password prompt (only show once)
   const HASHED_PASSWORD = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
 
   function loadOverlays() {
@@ -92,10 +94,17 @@ export function initMapPopup({
       try {
         layersControl.addOverlay(layer, name);
       } catch (e) {
+        // ignore
       }
     });
     overlaysPending = [];
     overlaysLoaded = true;
+    // hide professional control if present
+    try {
+      if (professionalBtn?.parentElement) {
+        professionalBtn.parentElement.style.display = 'none';
+      }
+    } catch (e) {}
   }
 
   async function computeSHA256Hex(text) {
@@ -109,39 +118,51 @@ export function initMapPopup({
     }
   }
 
+  // Deprecated automatic prompt. We won't auto-prompt when popup opens.
   function promptForPasswordIfNeeded() {
+    // intentionally no-op to prevent automatic popup on map open
+  }
+
+  // Show professional password prompt on-demand (triggered by the Professional button)
+  async function showProfessionalPrompt() {
     try {
-      if (overlaysPending && overlaysPending.length > 0 && !overlaysLoaded && !overlaysPromptShown && popup && popup.style.display === 'block') {
-        overlaysPromptShown = true;
-        const showPasswordPrompt = () => {
-          showMessageBox({
-            title: 'Professional option',
-            message: 'To access more layers, please enter password.',
-            confirmText: 'Confirm',
-            cancelText: 'Cancel',
-            input: true,
-            inputType: 'password',
-            onConfirm: async (val) => {
-              const hex = await computeSHA256Hex(val || '');
-              if (hex && hex === HASHED_PASSWORD) {
-                loadOverlays();
-              } else {
-                showMessageBox({
-                  message: 'Wrong password',
-                  confirmText: 'OK',
-                  onConfirm: () => {
-                    showPasswordPrompt();
-                  }
-                });
-              }
-            },
-            onCancel: () => {
+      overlaysPromptShown = true;
+      const showPasswordPrompt = () => {
+        showMessageBox({
+          title: 'Professional option',
+          message: 'To access more layers, please enter password.',
+          confirmText: 'Confirm',
+          cancelText: 'Cancel',
+          input: true,
+          inputType: 'password',
+          onConfirm: async (val) => {
+            const hex = await computeSHA256Hex(val || '');
+            if (hex && hex === HASHED_PASSWORD) {
+              loadOverlays();
+              // hide professional button if present
+              try {
+                if (professionalBtn) {
+                  const parent = professionalBtn.parentElement;
+                  if (parent) parent.style.display = 'none';
+                }
+              } catch (e) {}
+            } else {
+              showMessageBox({
+                message: 'Wrong password',
+                confirmText: 'OK',
+                onConfirm: () => {
+                  showPasswordPrompt();
+                }
+              });
             }
-          });
-        };
-        showPasswordPrompt();
-      }
+          },
+          onCancel: () => {
+          }
+        });
+      };
+      showPasswordPrompt();
     } catch (e) {
+      // ignore
     }
   }
   const coordScaleWrapper = mapDiv.querySelector('.coord-scale-wrapper');
@@ -332,22 +353,31 @@ export function initMapPopup({
       'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
       { ...googleAttr, crossOrigin: 'anonymous' }
     );
+
     const hkImageryLayer = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/imagery/wgs84/{z}/{x}/{y}.png',
       { ...imageryAttr, minZoom: 0, maxZoom: 19, crossOrigin: 'anonymous' }
     );
+
     const hkVectorBase = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png',
       { ...landsdAttr, maxZoom: 20, minZoom: 10, crossOrigin: 'anonymous' }
     );
+
     const hkVectorLabel = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png',
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
+
+    // separate label layer is required for the imagery group so that
+    // changing basemaps does not inadvertently remove the shared label layer
     const hkImageryLabel = L.tileLayer(
       'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png',
       { attribution: false, maxZoom: 20, minZoom: 0, crossOrigin: 'anonymous' }
     );
+
+
+    // Google Terrain
     const googleTerrain = L.tileLayer(
       'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
       {
@@ -367,16 +397,16 @@ export function initMapPopup({
     });
 
     const baseLayers = {
-      'OpenStreetMap': streets, 
+      'OpenStreetMap': streets,
       'Esri Satellite': esriSatellite,
       'Carto Light': cartoLight,
       'Carto Dark': cartoDark,
       'Google Streets': googleStreets,
       'Google Satellite': googleSatellite,
-      'Google Hybrid': googleHybrid,
-      'Google Terrain': googleTerrain,
-      'HK Vector': hkVectorGroup,
-      'HK Imagery': hkImageryGroup,
+  'Google Hybrid': googleHybrid,
+  'Google Terrain': googleTerrain,
+  'HK Vector': hkVectorGroup,
+  'HK Imagery': hkImageryGroup,
     };
 
     layersControl = L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
@@ -577,8 +607,42 @@ export function initMapPopup({
         return container;
       }
     });
+
+    // Professional control (placed after Draw control)
+    const ProfessionalControl = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd() {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-professional-control');
+        container.style.setProperty('margin-top', '1px', 'important');
+        const link = L.DomUtil.create('a', '', container);
+        link.href = '#';
+        link.title = 'Professional';
+        link.innerHTML = '<i class="fa-solid fa-user-lock"></i>';
+        professionalBtn = link;
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.on(container, 'mousedown', L.DomEvent.stopPropagation);
+        L.DomEvent.on(container, 'dblclick', L.DomEvent.stopPropagation);
+        L.DomEvent.on(link, 'click', L.DomEvent.stop)
+          .on(link, 'mousedown', L.DomEvent.stopPropagation)
+          .on(link, 'dblclick', L.DomEvent.stopPropagation)
+          .on(link, 'click', () => {
+            try {
+              showProfessionalPrompt();
+            } catch (e) {}
+          });
+        // hide control immediately if overlays already loaded
+        if (overlaysLoaded) {
+          container.style.display = 'none';
+        }
+        return container;
+      }
+    });
     const drawToggle = new DrawToggleControl();
     map.addControl(drawToggle);
+    
+    // Add professional control right after draw control
+    const professionalToggle = new ProfessionalControl();
+    map.addControl(professionalToggle);
   }
 
   function refreshMarkers() {
@@ -1122,6 +1186,10 @@ export function initMapPopup({
       if (exportControlContainer) exportControlContainer.style.display = 'none';
       if (coordScaleWrapper) coordScaleWrapper.style.display = 'none';
       if (textToggleContainer) textToggleContainer.style.setProperty('margin-top', '10px', 'important');
+      // Hide professional button in minimized state
+      if (professionalBtn?.parentElement) {
+        professionalBtn.parentElement.style.display = 'none';
+      }
       isMinimized = true;
       isMaximized = false; // 確保狀態正確
     } else {
@@ -1141,6 +1209,10 @@ export function initMapPopup({
       if (exportControlContainer) exportControlContainer.style.display = '';
       if (coordScaleWrapper) coordScaleWrapper.style.display = '';
       if (textToggleContainer) textToggleContainer.style.setProperty('margin-top', '1px', 'important');
+      // Show professional button only if overlays are not loaded yet
+      if (professionalBtn?.parentElement && !overlaysLoaded) {
+        professionalBtn.parentElement.style.display = '';
+      }
       isMinimized = false;
     }
     map?.invalidateSize();
