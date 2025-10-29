@@ -49,9 +49,12 @@ export function showMessageBox({
     inputEl.style.marginTop = '8px';
     inputEl.style.width = '100%';
     inputEl.style.boxSizing = 'border-box';
+    inputEl.style.border = '1px solid #ccc';
+    inputEl.style.borderRadius = '4px';
+    inputEl.style.boxShadow = 'inset 0 1px 2px rgba(0, 0, 0, 0.05)';
+    inputEl.style.padding = '4px 10px';
     // apply common input styling via existing CSS rules (input[type=text], input[type=password])
     content.appendChild(inputEl);
-    // focus input on show
     setTimeout(() => { inputEl.focus(); }, 10);
   }
   popup.appendChild(content);
