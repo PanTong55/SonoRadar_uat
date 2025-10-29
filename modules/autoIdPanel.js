@@ -1432,24 +1432,36 @@ export function initAutoIdPanel({
       10
     );
 
-    const res = autoIdHK({
+    // Adjust values according to Time Expansion so autoIdHK receives the
+    // same scale as the UI displays. When Time Expansion is active:
+    // - displayed frequencies are internal * 10
+    // - displayed durations are internal / 10
+    const freqMul = getTimeExpansionMode() ? 10 : 1;
+    const timeDenom = getTimeExpansionMode() ? 10 : 1;
+
+    const scaled = {
       callType,
       harmonic,
-      highestFreq: high,
-      lowestFreq: low,
-      kneeFreq: knee,
-      heelFreq: heel,
-      startFreq: start,
-      endFreq: end,
-      cfStart,
-      cfEnd,
-      duration,
-      bandwidth,
-      kneeLowTime,
-      kneeLowBandwidth,
-      heelLowBandwidth,
-      kneeHeelBandwidth
-    });
+      // frequencies/bandwidth in displayed kHz when TE active
+      highestFreq: isNaN(high) ? high : high * freqMul,
+      lowestFreq: isNaN(low) ? low : low * freqMul,
+      kneeFreq: isNaN(knee) ? knee : knee * freqMul,
+      heelFreq: isNaN(heel) ? heel : heel * freqMul,
+      startFreq: isNaN(start) ? start : start * freqMul,
+      endFreq: isNaN(end) ? end : end * freqMul,
+      cfStart: isNaN(cfStart) ? cfStart : cfStart * freqMul,
+      cfEnd: isNaN(cfEnd) ? cfEnd : cfEnd * freqMul,
+      // durations in displayed ms when TE active
+      duration: duration == null || isNaN(duration) ? duration : (duration / timeDenom),
+      // bandwidths in displayed kHz when TE active
+      bandwidth: bandwidth == null || isNaN(bandwidth) ? bandwidth : (bandwidth * freqMul),
+      kneeLowTime: kneeLowTime == null || isNaN(kneeLowTime) ? kneeLowTime : (kneeLowTime / timeDenom),
+      kneeLowBandwidth: kneeLowBandwidth == null || isNaN(kneeLowBandwidth) ? kneeLowBandwidth : (kneeLowBandwidth * freqMul),
+      heelLowBandwidth: heelLowBandwidth == null || isNaN(heelLowBandwidth) ? heelLowBandwidth : (heelLowBandwidth * freqMul),
+      kneeHeelBandwidth: kneeHeelBandwidth == null || isNaN(kneeHeelBandwidth) ? kneeHeelBandwidth : (kneeHeelBandwidth * freqMul)
+    };
+
+    const res = autoIdHK(scaled);
     tabData[currentTab].autoIdResult = res;
     updateResultDisplay();
     updateMarkers();
