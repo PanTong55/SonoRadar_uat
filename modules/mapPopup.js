@@ -1018,7 +1018,7 @@ export function initMapPopup({
     navigator.geolocation.getCurrentPosition((pos) => {
       const { latitude: lat, longitude: lon } = pos.coords;
       const icon = L.divIcon({
-        html: '<i class="fa-solid fa-location-pin"></i>',
+        html: '<i class="fa-solid fa-location-arrow"></i>',
         className: 'map-marker-device',
         iconSize: [28, 28],
         iconAnchor: [14, 28]
@@ -1047,7 +1047,6 @@ export function initMapPopup({
       const HK_CENTER = [22.28552, 114.15769]; // approximate center of Hong Kong
 
       if (!map) {
-        // create map centered on HK so fitBounds has a map to operate on
         createMap(HK_CENTER[0], HK_CENTER[1]);
       }
 
@@ -1055,12 +1054,10 @@ export function initMapPopup({
         try {
           map.fitBounds(HK_BOUNDS);
         } catch (e) {
-          // fallback to setting view if fitBounds fails for some reason
           map.setView(HK_CENTER, DEFAULT_ZOOM);
         }
       }
 
-      // still attempt to get device location; if obtained it will update the view
       showDeviceLocation();	  
       return;
     }
