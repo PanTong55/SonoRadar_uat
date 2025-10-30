@@ -287,11 +287,25 @@ export function initMapPopup({
 
   function createMap(lat, lon) {
     map = L.map(mapDiv).setView([lat, lon], 13);
+    // 當拖動或縮放時，不要顯示 survey point 的 tooltip
+    let suppressTooltips = false;
+    function setSurveyPointerEvents(enabled) {
+      try {
+        if (!surveyPointLayer) return;
+        surveyPointLayer.eachLayer(l => {
+          const el = l.getElement ? l.getElement() : l._icon;
+          if (el) el.style.pointerEvents = enabled ? '' : 'none';
+        });
+      } catch (e) {}
+    }    
     map.createPane('annotationPane');
     map.getPane('annotationPane').style.zIndex = 650;
     zoomControlContainer = map.zoomControl.getContainer();
-    map.on('dragstart', () => { isMapDragging = true; updateCursor(); });
-    map.on('dragend', () => { isMapDragging = false; updateCursor(); });
+  map.on('dragstart', () => { isMapDragging = true; suppressTooltips = true; setSurveyPointerEvents(false); updateCursor(); });
+  map.on('dragend', () => { isMapDragging = false; suppressTooltips = false; setSurveyPointerEvents(true); updateCursor(); });
+  // 當使用者開始/結束縮放時也暫時關閉 survey tooltip
+  map.on('zoomstart', () => { suppressTooltips = true; setSurveyPointerEvents(false); });
+  map.on('zoomend', () => { suppressTooltips = false; setSurveyPointerEvents(true); });
     updateCursor();
     scaleControl = L.control.scale({
       position: 'bottomleft',
