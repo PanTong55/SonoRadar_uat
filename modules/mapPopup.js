@@ -1,5 +1,6 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
 import { showMessageBox } from './messageBox.js';
+import { Dropdown } from './dropdown.js';
 
 let importKmlFileFn = null;
 
@@ -960,12 +961,71 @@ export function initMapPopup({
         editTextMarker(marker);
       }
     });
-    marker.on('contextmenu', () => {
-      if (textMode && !activeTextInput) {
-        map.removeLayer(marker);
-        textMarkers = textMarkers.filter(m => m !== marker);
-        updateMarkerPointerEvents();
-      }
+    marker.on('contextmenu', (evt) => {
+      // 使用 dropdown.js 顯示一個只有 "Remove" 的選單，按下後再刪除文字標記
+      if (!(textMode && !activeTextInput)) return;
+      try {
+        const orig = evt.originalEvent || evt.srcEvent || {};
+        orig.preventDefault?.();
+        orig.stopPropagation?.();
+      } catch (e) {}
+
+      // 建立一個臨時按鈕，Dropdown 會根據按鈕位置來定位選單
+      const btn = document.createElement('button');
+      btn.style.position = 'absolute';
+      btn.style.left = (evt.originalEvent?.clientX || 0) + 'px';
+      btn.style.top = (evt.originalEvent?.clientY || 0) + 'px';
+      btn.style.width = '1px';
+      btn.style.height = '1px';
+      btn.style.padding = '0';
+      btn.style.margin = '0';
+      btn.style.opacity = '0';
+      btn.style.zIndex = '2147483647';
+      btn.style.pointerEvents = 'auto';
+      document.body.appendChild(btn);
+
+      const items = [{ label: 'Remove', value: 'remove' }];
+      const dropdown = new Dropdown(btn, items, {
+        onChange: (val) => {
+          try {
+            if (val && (val.value === 'remove' || val.label === 'Remove')) {
+              map.removeLayer(marker);
+              textMarkers = textMarkers.filter(m => m !== marker);
+              updateMarkerPointerEvents();
+            }
+          } finally {
+            cleanup();
+          }
+        }
+      });
+
+      // 將選項文字顯示為紅色以表危險操作
+      try {
+        const first = dropdown.menu.querySelector('.dropdown-item');
+        if (first) first.style.color = 'red';
+      } catch (e) {}
+
+      // 當選單關閉時做清理（移除臨時按鈕與選單 DOM）
+      const cleanup = () => {
+        try {
+          if (dropdown && typeof dropdown.close === 'function') dropdown.close();
+        } catch (e) {}
+        try {
+          if (dropdown && dropdown.menu && dropdown.menu.parentNode) dropdown.menu.parentNode.removeChild(dropdown.menu);
+        } catch (e) {}
+        try { if (btn && btn.parentNode) btn.parentNode.removeChild(btn); } catch (e) {}
+      };
+
+      // 包裝 close 以確保一旦關閉就清理
+      try {
+        const origClose = dropdown.close.bind(dropdown);
+        dropdown.close = function() {
+          origClose();
+          cleanup();
+        };
+      } catch (e) {}
+
+      dropdown.open();
     });
     return marker;
   }
