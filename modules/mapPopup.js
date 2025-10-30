@@ -413,7 +413,7 @@ export function initMapPopup({
     layersControl = L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
     layersControlContainer = layersControl.getContainer();
 
-    fetch("https://raw.githubusercontent.com/PanTong55/spectrogram/main/hkgrid.geojson")
+    fetch("https://raw.githubusercontent.com/hkbatradar/SonoRadar/main/hkgrid.geojson")
       .then((r) => r.json())
       .then((hkgriddata) => {
         hkgridLayer = L.geoJSON(hkgriddata, {
