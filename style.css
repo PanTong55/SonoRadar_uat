@@ -1613,6 +1613,46 @@ input.tag-button.editing {
   white-space: nowrap;
 }
 
+/* Pinned popup should visually match the tooltip style.
+   Leaflet popup structure:
+   .leaflet-popup.map-tooltip-pinned > .leaflet-popup-content-wrapper
+   and .leaflet-popup-tip
+*/
+.leaflet-popup.map-tooltip-pinned .leaflet-popup-content-wrapper,
+.map-tooltip-pinned .leaflet-popup-content-wrapper {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  padding: 6px 8px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.leaflet-popup.map-tooltip-pinned .leaflet-popup-tip,
+.map-tooltip-pinned .leaflet-popup-tip {
+  /* make the tip match wrapper background */
+  background: transparent; /* keep existing svg/shape but color via pseudo/borders */
+}
+
+.leaflet-popup.map-tooltip-pinned .leaflet-popup-tip-container .leaflet-popup-tip {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+/* ensure popup content has small font/size similar to tooltip */
+.leaflet-popup.map-tooltip-pinned .leaflet-popup-content {
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+/* allow pointer events so popup can be interactive if needed */
+.leaflet-popup.map-tooltip-pinned {
+  pointer-events: auto;
+}
+
 /* Route toggle and buttons */
 .leaflet-route-toggle-control {
   display: flex;
