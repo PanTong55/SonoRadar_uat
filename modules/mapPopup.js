@@ -292,35 +292,54 @@ export function initMapPopup({
 
   function createMap(lat, lon) {
     map = L.map(mapDiv).setView([lat, lon], 13);
-    // ensure pinned survey markers remain visible even if other clicks close tooltips
+    // ensure pinned survey markers remain visible even if other clicks close tooltips/popups
     map.on('click', () => {
       try {
         pinnedSurveyMarkers.forEach(m => {
-          try { if (m?._tooltipPinned) m.openTooltip(); } catch (e) {}
+          try {
+            if (m?._tooltipPinned) {
+              if (m._pinnedIsPopup) m.openPopup(); else m.openTooltip();
+            }
+          } catch (e) {}
         });
       } catch (e) {}
     });
-    // also listen for clicks outside the map (document) to re-open pinned tooltips
+    // also listen for clicks outside the map (document) to re-open pinned displays
     document.addEventListener('click', () => {
       try {
         pinnedSurveyMarkers.forEach(m => {
-          try { if (m?._tooltipPinned) m.openTooltip(); } catch (e) {}
+          try {
+            if (m?._tooltipPinned) {
+              if (m._pinnedIsPopup) m.openPopup(); else m.openTooltip();
+            }
+          } catch (e) {}
         });
       } catch (e) {}
     });
-    // Protect pinned tooltips: if Leaflet emits a tooltipclose for a pinned marker,
-    // immediately re-open it so it remains visible when other markers are clicked.
-    map.on && map.on('tooltipclose', (e) => {
-      try {
-        const layer = e.layer || (e.tooltip && e.tooltip._source) || null;
-        if (layer && pinnedSurveyMarkers.has(layer)) {
-          // reopen asynchronously to avoid interfering with Leaflet internals
-          setTimeout(() => {
-            try { if (layer._tooltipPinned) layer.openTooltip(); } catch (err) {}
-          }, 0);
-        }
-      } catch (err) {}
-    });
+    // Protect pinned tooltips/popups: if Leaflet emits close events for pinned layers,
+    // immediately re-open them so they remain visible when other markers are clicked.
+    if (map && map.on) {
+      map.on('tooltipclose', (e) => {
+        try {
+          const layer = e.layer || (e.tooltip && e.tooltip._source) || null;
+          if (layer && pinnedSurveyMarkers.has(layer) && layer._tooltipPinned && !layer._pinnedIsPopup) {
+            setTimeout(() => {
+              try { if (layer._tooltipPinned) layer.openTooltip(); } catch (err) {}
+            }, 0);
+          }
+        } catch (err) {}
+      });
+      map.on('popupclose', (e) => {
+        try {
+          const layer = e.layer || (e.popup && e.popup._source) || (e.popup && e.popup._source) || null;
+          if (layer && pinnedSurveyMarkers.has(layer) && layer._tooltipPinned && layer._pinnedIsPopup) {
+            setTimeout(() => {
+              try { if (layer._tooltipPinned) layer.openPopup(); } catch (err) {}
+            }, 0);
+          }
+        } catch (err) {}
+      });
+    }
     // 當拖動或縮放時，不要顯示 marker 的 tooltip (全域抑制)
     function setAllMarkersPointerEvents(enabled) {
       try {
@@ -511,39 +530,44 @@ export function initMapPopup({
               className: 'map-tooltip',
               permanent: false
             });
-            // toggle persistent display on click: click once -> tooltip stays open (permanent),
-            // click again -> revert to original hover behavior
+            // toggle persistent display on click: use Popup for pinned state so it won't auto-close
+            // click once -> show persistent popup; click again -> revert to hover tooltip
             marker._tooltipPinned = false;
+            marker._pinnedIsPopup = false;
             marker.on('click', (evt) => {
               try { evt.originalEvent && evt.originalEvent.stopPropagation(); } catch (e) {}
               try {
                 if (!marker._tooltipPinned) {
-                  // make tooltip permanent and open it
+                  // switch to popup (persistent)
                   try { marker.unbindTooltip(); } catch (e) {}
-                  marker.bindTooltip(pt.Location, {
-                    direction: 'top',
-                    offset: [-6, -22],
-                    className: 'map-tooltip',
-                    permanent: true
+                  try { marker.unbindPopup(); } catch (e) {}
+                  marker.bindPopup(pt.Location, {
+                    className: 'map-tooltip map-tooltip-pinned',
+                    closeButton: false,
+                    autoClose: false,
+                    closeOnClick: false,
+                    offset: L.point(0, -22)
                   });
-                  marker.openTooltip();
+                  marker.openPopup();
                   marker._tooltipPinned = true;
+                  marker._pinnedIsPopup = true;
                   pinnedSurveyMarkers.add(marker);
                 } else {
-                  // revert to non-permanent (hover) tooltip
-                  try { marker.unbindTooltip(); } catch (e) {}
+                  // unpin: close popup and restore hover tooltip
+                  try { marker.closePopup(); } catch (e) {}
+                  try { marker.unbindPopup(); } catch (e) {}
                   marker.bindTooltip(pt.Location, {
                     direction: 'top',
                     offset: [-6, -22],
                     className: 'map-tooltip',
                     permanent: false
                   });
-                  marker.closeTooltip();
                   marker._tooltipPinned = false;
+                  marker._pinnedIsPopup = false;
                   pinnedSurveyMarkers.delete(marker);
                 }
               } catch (e) {
-                // ignore any tooltip toggle errors
+                // ignore any toggle errors
               }
             });
             return marker;
