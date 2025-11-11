@@ -187,8 +187,11 @@ export function initMapPopup({
   let dropCounter = 0;
 
   let ctrlPressed = false;
+  let markerPointerSuppressed = false; // 當拖動/縮放期間暫時抑制 marker tooltip
 
   function updateMarkerPointerEvents() {
+    // 如果被全域抑制（drag/zoom），則不要改變 pointerEvents
+    if (markerPointerSuppressed) return;
     const all = [...markers, ...textMarkers];
     all.forEach(m => {
       const el = m.getElement ? m.getElement() : m._icon;
@@ -287,25 +290,33 @@ export function initMapPopup({
 
   function createMap(lat, lon) {
     map = L.map(mapDiv).setView([lat, lon], 13);
-    // 當拖動或縮放時，不要顯示 survey point 的 tooltip
-    let suppressTooltips = false;
-    function setSurveyPointerEvents(enabled) {
+    // 當拖動或縮放時，不要顯示 marker 的 tooltip (全域抑制)
+    function setAllMarkersPointerEvents(enabled) {
       try {
-        if (!surveyPointLayer) return;
-        surveyPointLayer.eachLayer(l => {
-          const el = l.getElement ? l.getElement() : l._icon;
+        markerPointerSuppressed = enabled ? false : true;
+        // top-level markers & text markers
+        const all = [...markers, ...textMarkers];
+        all.forEach(m => {
+          const el = m.getElement ? m.getElement() : m._icon;
           if (el) el.style.pointerEvents = enabled ? '' : 'none';
         });
+        // surveyPointLayer (若存在)
+        if (typeof surveyPointLayer !== 'undefined' && surveyPointLayer && surveyPointLayer.eachLayer) {
+          surveyPointLayer.eachLayer(l => {
+            const el = l.getElement ? l.getElement() : l._icon;
+            if (el) el.style.pointerEvents = enabled ? '' : 'none';
+          });
+        }
       } catch (e) {}
-    }    
+    }
     map.createPane('annotationPane');
     map.getPane('annotationPane').style.zIndex = 650;
     zoomControlContainer = map.zoomControl.getContainer();
-  map.on('dragstart', () => { isMapDragging = true; suppressTooltips = true; setSurveyPointerEvents(false); updateCursor(); });
-  map.on('dragend', () => { isMapDragging = false; suppressTooltips = false; setSurveyPointerEvents(true); updateCursor(); });
-  // 當使用者開始/結束縮放時也暫時關閉 survey tooltip
-  map.on('zoomstart', () => { suppressTooltips = true; setSurveyPointerEvents(false); });
-  map.on('zoomend', () => { suppressTooltips = false; setSurveyPointerEvents(true); });
+  map.on('dragstart', () => { isMapDragging = true; setAllMarkersPointerEvents(false); updateCursor(); });
+  map.on('dragend', () => { isMapDragging = false; setAllMarkersPointerEvents(true); updateCursor(); });
+  // 當使用者開始/結束縮放時也暫時關閉 marker tooltip
+  map.on('zoomstart', () => { setAllMarkersPointerEvents(false); });
+  map.on('zoomend', () => { setAllMarkersPointerEvents(true); });
     updateCursor();
     scaleControl = L.control.scale({
       position: 'bottomleft',
