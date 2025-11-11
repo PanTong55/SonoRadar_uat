@@ -1629,7 +1629,7 @@ input.tag-button.editing {
   border: 1px solid #fff;
   border-radius: 3px;
   box-shadow: none;
-  padding: 6px 8px;
+  padding: 6px 6px;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
