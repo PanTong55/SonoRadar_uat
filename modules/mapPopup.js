@@ -63,6 +63,8 @@ export function initMapPopup({
 
   let map = null;
   let markers = [];
+  // track survey markers whose tooltip was pinned (should remain visible)
+  let pinnedSurveyMarkers = new Set();
   let polylines = [];
   let routeBtn = null;
   let routeToggleBtn = null;
@@ -290,6 +292,22 @@ export function initMapPopup({
 
   function createMap(lat, lon) {
     map = L.map(mapDiv).setView([lat, lon], 13);
+    // ensure pinned survey markers remain visible even if other clicks close tooltips
+    map.on('click', () => {
+      try {
+        pinnedSurveyMarkers.forEach(m => {
+          try { if (m?._tooltipPinned) m.openTooltip(); } catch (e) {}
+        });
+      } catch (e) {}
+    });
+    // also listen for clicks outside the map (document) to re-open pinned tooltips
+    document.addEventListener('click', () => {
+      try {
+        pinnedSurveyMarkers.forEach(m => {
+          try { if (m?._tooltipPinned) m.openTooltip(); } catch (e) {}
+        });
+      } catch (e) {}
+    });
     // 當拖動或縮放時，不要顯示 marker 的 tooltip (全域抑制)
     function setAllMarkersPointerEvents(enabled) {
       try {
@@ -497,6 +515,7 @@ export function initMapPopup({
                   });
                   marker.openTooltip();
                   marker._tooltipPinned = true;
+                  pinnedSurveyMarkers.add(marker);
                 } else {
                   // revert to non-permanent (hover) tooltip
                   try { marker.unbindTooltip(); } catch (e) {}
@@ -508,6 +527,7 @@ export function initMapPopup({
                   });
                   marker.closeTooltip();
                   marker._tooltipPinned = false;
+                  pinnedSurveyMarkers.delete(marker);
                 }
               } catch (e) {
                 // ignore any tooltip toggle errors
