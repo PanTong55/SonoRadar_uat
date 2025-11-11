@@ -308,6 +308,19 @@ export function initMapPopup({
         });
       } catch (e) {}
     });
+    // Protect pinned tooltips: if Leaflet emits a tooltipclose for a pinned marker,
+    // immediately re-open it so it remains visible when other markers are clicked.
+    map.on && map.on('tooltipclose', (e) => {
+      try {
+        const layer = e.layer || (e.tooltip && e.tooltip._source) || null;
+        if (layer && pinnedSurveyMarkers.has(layer)) {
+          // reopen asynchronously to avoid interfering with Leaflet internals
+          setTimeout(() => {
+            try { if (layer._tooltipPinned) layer.openTooltip(); } catch (err) {}
+          }, 0);
+        }
+      } catch (err) {}
+    });
     // 當拖動或縮放時，不要顯示 marker 的 tooltip (全域抑制)
     function setAllMarkersPointerEvents(enabled) {
       try {
