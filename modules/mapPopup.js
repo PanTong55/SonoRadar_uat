@@ -473,10 +473,45 @@ export function initMapPopup({
                 iconAnchor: [11, 11]
               })
             });
+            // default: non-permanent tooltip (shows on hover)
             marker.bindTooltip(pt.Location, {
               direction: 'top',
               offset: [-3, -22],
-              className: 'map-tooltip'
+              className: 'map-tooltip',
+              permanent: false
+            });
+            // toggle persistent display on click: click once -> tooltip stays open (permanent),
+            // click again -> revert to original hover behavior
+            marker._tooltipPinned = false;
+            marker.on('click', (evt) => {
+              try { evt.originalEvent && evt.originalEvent.stopPropagation(); } catch (e) {}
+              try {
+                if (!marker._tooltipPinned) {
+                  // make tooltip permanent and open it
+                  try { marker.unbindTooltip(); } catch (e) {}
+                  marker.bindTooltip(pt.Location, {
+                    direction: 'top',
+                    offset: [-3, -22],
+                    className: 'map-tooltip',
+                    permanent: true
+                  });
+                  marker.openTooltip();
+                  marker._tooltipPinned = true;
+                } else {
+                  // revert to non-permanent (hover) tooltip
+                  try { marker.unbindTooltip(); } catch (e) {}
+                  marker.bindTooltip(pt.Location, {
+                    direction: 'top',
+                    offset: [-3, -22],
+                    className: 'map-tooltip',
+                    permanent: false
+                  });
+                  marker.closeTooltip();
+                  marker._tooltipPinned = false;
+                }
+              } catch (e) {
+                // ignore any tooltip toggle errors
+              }
             });
             return marker;
           }).filter(Boolean);
