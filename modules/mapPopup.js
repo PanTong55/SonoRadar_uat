@@ -546,7 +546,7 @@ export function initMapPopup({
                     closeButton: false,
                     autoClose: false,
                     closeOnClick: false,
-                    offset: L.point(0, -22)
+                    offset: L.point(-6, -18)
                   });
                   marker.openPopup();
                   marker._tooltipPinned = true;

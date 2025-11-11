@@ -1622,9 +1622,10 @@ input.tag-button.editing {
 .map-tooltip-pinned .leaflet-popup-content-wrapper {
   background: #ffffff;
   color: #000000;
-  border: 1px solid rgba(0,0,0,0.2);
+  font-family: 'Noto Sans HK';
+  border: none;
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  box-shadow: none;
   padding: 6px 8px;
   white-space: nowrap;
   line-height: 1.2;
