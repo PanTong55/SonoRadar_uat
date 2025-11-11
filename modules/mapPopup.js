@@ -507,7 +507,7 @@ export function initMapPopup({
             // default: non-permanent tooltip (shows on hover)
             marker.bindTooltip(pt.Location, {
               direction: 'top',
-              offset: [-3, -22],
+              offset: [0, -22],
               className: 'map-tooltip',
               permanent: false
             });
@@ -522,7 +522,7 @@ export function initMapPopup({
                   try { marker.unbindTooltip(); } catch (e) {}
                   marker.bindTooltip(pt.Location, {
                     direction: 'top',
-                    offset: [-3, -22],
+                    offset: [0, -22],
                     className: 'map-tooltip',
                     permanent: true
                   });
@@ -534,7 +534,7 @@ export function initMapPopup({
                   try { marker.unbindTooltip(); } catch (e) {}
                   marker.bindTooltip(pt.Location, {
                     direction: 'top',
-                    offset: [-3, -22],
+                    offset: [0, -22],
                     className: 'map-tooltip',
                     permanent: false
                   });
