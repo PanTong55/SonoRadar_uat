@@ -5,6 +5,8 @@ import MarkerClusteringManager from './markerClusteringManager.js';
 
 let importKmlFileFn = null;
 let clusterManager = null;
+let surveyPointsDataPending = false; // Track if survey points data needs to be loaded
+let surveyPointsLoaded = false; // Track if survey points have been successfully loaded
 
 export function initMapPopup({
   buttonId = 'mapBtn',
@@ -110,6 +112,53 @@ export function initMapPopup({
         professionalBtn.parentElement.style.display = 'none';
       }
     } catch (e) {}
+    // Load survey points data after password is verified
+    if (!surveyPointsLoaded && !surveyPointsDataPending) {
+      loadSurveyPointsData();
+    }
+  }
+
+  // Load survey points data from remote source
+  function loadSurveyPointsData() {
+    if (surveyPointsDataPending || surveyPointsLoaded) return;
+    surveyPointsDataPending = true;
+    
+    fetch("https://opensheet.elk.sh/1Al_sWwiIU6DtQv6sMFvXb9wBUbBiE-zcYk8vEwV82x8/sheet3")
+      .then(r => r.json())
+      .then(points => {
+        // Initialize clustering manager if not already done
+        if (!clusterManager) {
+          clusterManager = new MarkerClusteringManager(map, {
+            maxVisibleMarkers: 500,
+            enableAnimation: true,
+            animationDuration: 300,
+          });
+        }
+
+        // Format data for clustering system
+        const formattedPoints = points
+          .filter(pt => {
+            const lat = parseFloat(pt.Latitude);
+            const lon = parseFloat(pt.Longitude);
+            return !isNaN(lat) && !isNaN(lon);
+          })
+          .map((pt, idx) => ({
+            id: `survey_${idx}`,
+            lat: parseFloat(pt.Latitude),
+            lng: parseFloat(pt.Longitude),
+            location: pt.Location,
+          }));
+
+        // Set survey points in clustering manager
+        clusterManager.setSurveyPoints(formattedPoints);
+        surveyPointsLoaded = true;
+        surveyPointsDataPending = false;
+        console.log('[MapPopup] Survey points loaded successfully');
+      })
+      .catch(err => {
+        console.error('[MapPopup] Error loading survey points:', err);
+        surveyPointsDataPending = false;
+      });
   }
 
   async function computeSHA256Hex(text) {
@@ -517,40 +566,9 @@ export function initMapPopup({
       });
     
       // Survey point layer with dynamic clustering
-      let surveyPointLayer = null;
-      fetch("https://opensheet.elk.sh/1Al_sWwiIU6DtQv6sMFvXb9wBUbBiE-zcYk8vEwV82x8/sheet3")
-        .then(r => r.json())
-      .then(points => {
-        // 初始化聚類管理器
-        if (!clusterManager) {
-          clusterManager = new MarkerClusteringManager(map, {
-            maxVisibleMarkers: 500,
-            enableAnimation: true,
-            animationDuration: 300,
-          });
-        }
-
-        // 轉換數據格式用於聚類系統
-        const formattedPoints = points
-          .filter(pt => {
-            const lat = parseFloat(pt.Latitude);
-            const lon = parseFloat(pt.Longitude);
-            return !isNaN(lat) && !isNaN(lon);
-          })
-          .map((pt, idx) => ({
-            id: `survey_${idx}`,
-            lat: parseFloat(pt.Latitude),
-            lng: parseFloat(pt.Longitude),
-            location: pt.Location,
-          }));
-
-        clusterManager.setSurveyPoints(formattedPoints);
-
-        // 保留原 surveyPointLayer 以供 overlays 使用（會通過 clustering 管理器隱式渲染）
-        surveyPointLayer = L.layerGroup([]);
-        overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
-        promptForPasswordIfNeeded();
-      });
+      // Note: Survey points will be loaded only after password verification
+      let surveyPointLayer = L.layerGroup([]);
+      overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
 
     drawnItems = new L.FeatureGroup().addTo(map);
     const canvasRenderer = L.canvas({ pane: 'annotationPane' });
