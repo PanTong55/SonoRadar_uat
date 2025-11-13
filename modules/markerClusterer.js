@@ -151,7 +151,7 @@ class ClusterEngine {
    */
   getClusterRadiusForZoom(zoom, visiblePointCount = 0) {
     // 高 zoom level 且點數少於250時禁用聚類
-    if (zoom >= 17 && visiblePointCount < 250) return -1; // -1 表示禁用聚類
+    if (zoom >= 14 && visiblePointCount < 250) return -1; // -1 表示禁用聚類
     if (zoom >= 18) return 0; // 18+: 不聚類
     if (zoom >= 15) return 0.01; // 15-17: 最小聚類
     if (zoom >= 12) return 0.05;
