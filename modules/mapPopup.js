@@ -152,17 +152,58 @@ export function initMapPopup({
         // Set survey points in clustering manager
         clusterManager.setSurveyPoints(formattedPoints);
         
-        // Add clustering layers to overlay control (similar to 1km Grid)
-        // This ensures survey points only show when user toggles the overlay
+        // Add single Survey point overlay that dynamically shows clusters or markers based on zoom
         try {
-          const clusterLayerGroup = clusterManager.getClusterLayerGroup();
-          const markerLayerGroup = clusterManager.getMarkerLayerGroup();
-          if (clusterLayerGroup && markerLayerGroup && layersControl) {
-            layersControl.addOverlay(clusterLayerGroup, 'Survey point clusters');
-            layersControl.addOverlay(markerLayerGroup, 'Survey point markers');
+          // Create a combined layer group that will be managed dynamically
+          const surveyPointLayer = L.layerGroup();
+          
+          if (layersControl) {
+            layersControl.addOverlay(surveyPointLayer, 'Survey point');
           }
+          
+          // Function to update layer visibility based on zoom level
+          const updateSurveyPointLayers = () => {
+            if (!map.hasLayer(surveyPointLayer)) return; // Only update if overlay is checked
+            
+            const zoom = map.getZoom();
+            const clusterLayerGroup = clusterManager.getClusterLayerGroup();
+            const markerLayerGroup = clusterManager.getMarkerLayerGroup();
+            
+            surveyPointLayer.clearLayers();
+            
+            // Determine which layers to show based on zoom and point count
+            const visiblePointCount = clusterManager.currentVisibleMarkers?.length || 0;
+            const shouldCluster = zoom < 14 || visiblePointCount >= 250;
+            
+            if (shouldCluster && clusterLayerGroup) {
+              // Add cluster layers
+              clusterLayerGroup.eachLayer(layer => {
+                surveyPointLayer.addLayer(layer);
+              });
+            } else if (!shouldCluster && markerLayerGroup) {
+              // Add marker layers
+              markerLayerGroup.eachLayer(layer => {
+                surveyPointLayer.addLayer(layer);
+              });
+            }
+          };
+          
+          // Listen to map events to update layers dynamically
+          map.on('zoomend', updateSurveyPointLayers);
+          map.on('moveend', updateSurveyPointLayers);
+          
+          // Listen to overlay toggle
+          map.on('overlayadd', (e) => {
+            if (e.name === 'Survey point') {
+              updateSurveyPointLayers();
+            }
+          });
+          
+          // Store reference for later use
+          clusterManager.surveyPointLayer = surveyPointLayer;
+          clusterManager.updateSurveyPointLayers = updateSurveyPointLayers;
         } catch (e) {
-          console.error('[MapPopup] Error adding clustering layers to overlay control:', e);
+          console.error('[MapPopup] Error adding survey point overlay:', e);
         }
         
         surveyPointsLoaded = true;
@@ -240,6 +281,7 @@ export function initMapPopup({
   let copyMsgTimer = null;
   let scaleControl = null;
   let isMapDragging = false;
+  let isMapZooming = false; // Track if map is zooming
   let layersControlContainer = null;
   let zoomControlContainer = null;
   let routeToggleContainer = null;
@@ -402,10 +444,12 @@ export function initMapPopup({
       });
       map.on('popupclose', (e) => {
         try {
-          // 在使用者拖曳地圖時，不要強制重新開啟 popup（以免觸發自動平移）
-          if (isMapDragging) return;
+          // 在使用者拖曳或縮放地圖時，不要強制移除或重新開啟 popup
+          // 如果 popup 是 pinned，應該保持開啟直到用戶手動取消 pin
+          if (isMapDragging || isMapZooming) return;
           const layer = e.layer || (e.popup && e.popup._source) || (e.popup && e.popup._source) || null;
           if (layer && pinnedSurveyMarkers.has(layer) && layer._tooltipPinned && layer._pinnedIsPopup) {
+            // 如果是 pinned popup，重新開啟
             setTimeout(() => {
               try { if (layer._tooltipPinned) layer.openPopup(); } catch (err) {}
             }, 0);
@@ -437,9 +481,9 @@ export function initMapPopup({
     zoomControlContainer = map.zoomControl.getContainer();
   map.on('dragstart', () => { isMapDragging = true; setAllMarkersPointerEvents(false); updateCursor(); });
   map.on('dragend', () => { isMapDragging = false; setAllMarkersPointerEvents(true); updateCursor(); });
-  // 當使用者開始/結束縮放時也暫時關閉 marker tooltip
-  map.on('zoomstart', () => { setAllMarkersPointerEvents(false); });
-  map.on('zoomend', () => { setAllMarkersPointerEvents(true); });
+  // 當使用者開始/結束縮放時也暫時設置標誌以保護 pinned popups
+  map.on('zoomstart', () => { isMapZooming = true; setAllMarkersPointerEvents(false); });
+  map.on('zoomend', () => { isMapZooming = false; setAllMarkersPointerEvents(true); });
     updateCursor();
     scaleControl = L.control.scale({
       position: 'bottomleft',

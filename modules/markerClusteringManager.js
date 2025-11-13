@@ -286,6 +286,11 @@ export class MarkerClusteringManager {
         
         // 更新過渡狀態
         this.wasClusteredBefore = this.isClustered;
+        
+        // 如果有 surveyPointLayer，更新其內容（用於 overlay 動態顯示）
+        if (this.updateSurveyPointLayers) {
+          this.updateSurveyPointLayers();
+        }
       }, fadeOutDuration);
     } catch (e) {
       console.error('[ClusterManager] Error during render:', e);
