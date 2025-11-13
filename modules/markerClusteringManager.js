@@ -372,7 +372,10 @@ export class MarkerClusteringManager {
             try {
               const bbox = this.getBboxForCluster(cluster);
               if (bbox && this.map) {
+                console.log('[ClusterManager] Fitting bounds for cluster:', cluster.id);
                 this.map.fitBounds(bbox, { padding: 50, duration: 500 });
+              } else {
+                console.warn('[ClusterManager] Cannot fit bounds: bbox is', bbox);
               }
             } catch (err) {
               console.error('[ClusterManager] Error fitting bounds:', err);
@@ -492,13 +495,35 @@ export class MarkerClusteringManager {
    * 計算聚類的邊界框
    */
   getBboxForCluster(cluster) {
-    const points = cluster.points;
-    const lats = points.map(p => p.lat);
-    const lngs = points.map(p => p.lng);
+    if (!cluster || !cluster.points || cluster.points.length === 0) {
+      console.warn('[ClusterManager] Invalid cluster data:', cluster);
+      return null;
+    }
+
+    const validPoints = cluster.points.filter(p => {
+      const hasLat = typeof p.lat === 'number' && !isNaN(p.lat);
+      const hasLng = typeof p.lng === 'number' && !isNaN(p.lng);
+      return hasLat && hasLng;
+    });
+
+    if (validPoints.length === 0) {
+      console.warn('[ClusterManager] No valid points in cluster:', cluster);
+      return null;
+    }
+
+    const lats = validPoints.map(p => p.lat);
+    const lngs = validPoints.map(p => p.lng);
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
+
+    // 驗證邊界值
+    if (!isFinite(minLat) || !isFinite(maxLat) || !isFinite(minLng) || !isFinite(maxLng)) {
+      console.warn('[ClusterManager] Invalid bounds calculated:', { minLat, maxLat, minLng, maxLng });
+      return null;
+    }
+
     return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
   }
 
