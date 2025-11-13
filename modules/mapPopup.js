@@ -151,6 +151,20 @@ export function initMapPopup({
 
         // Set survey points in clustering manager
         clusterManager.setSurveyPoints(formattedPoints);
+        
+        // Add clustering layers to overlay control (similar to 1km Grid)
+        // This ensures survey points only show when user toggles the overlay
+        try {
+          const clusterLayerGroup = clusterManager.getClusterLayerGroup();
+          const markerLayerGroup = clusterManager.getMarkerLayerGroup();
+          if (clusterLayerGroup && markerLayerGroup && layersControl) {
+            layersControl.addOverlay(clusterLayerGroup, 'Survey point clusters');
+            layersControl.addOverlay(markerLayerGroup, 'Survey point markers');
+          }
+        } catch (e) {
+          console.error('[MapPopup] Error adding clustering layers to overlay control:', e);
+        }
+        
         surveyPointsLoaded = true;
         surveyPointsDataPending = false;
         console.log('[MapPopup] Survey points loaded successfully');
@@ -564,11 +578,6 @@ export function initMapPopup({
         // if popup is already open, prompt now
         promptForPasswordIfNeeded();
       });
-    
-      // Survey point layer with dynamic clustering
-      // Note: Survey points will be loaded only after password verification
-      let surveyPointLayer = L.layerGroup([]);
-      overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
 
     drawnItems = new L.FeatureGroup().addTo(map);
     const canvasRenderer = L.canvas({ pane: 'annotationPane' });

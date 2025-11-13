@@ -62,8 +62,9 @@ export class MarkerClusteringManager {
     }
 
     // 建立圖層
-    this.clusterLayerGroup = L.layerGroup().addTo(this.map);
-    this.markerLayerGroup = L.layerGroup().addTo(this.map);
+    this.clusterLayerGroup = L.layerGroup();
+    this.markerLayerGroup = L.layerGroup();
+    // Note: Layers will be added to map through overlay control, not here
 
     // 監聽地圖事件
     this.map.on('zoomstart', () => this.onZoomOrMoveStart());
@@ -488,6 +489,20 @@ export class MarkerClusteringManager {
    */
   updateData(points) {
     this.setSurveyPoints(points);
+  }
+
+  /**
+   * 取得 cluster layer group
+   */
+  getClusterLayerGroup() {
+    return this.clusterLayerGroup;
+  }
+
+  /**
+   * 取得 marker layer group
+   */
+  getMarkerLayerGroup() {
+    return this.markerLayerGroup;
   }
 
   /**
