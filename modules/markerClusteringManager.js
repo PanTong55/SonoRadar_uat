@@ -35,7 +35,8 @@ export class MarkerClusteringManager {
     this.zoomThrottleTimer = null;
     this.zoomThrottleDelay = 200; // ms
 
-    this.pinnedSurveyMarkers = new Set();
+    // 儲存 pinned point IDs（不是 marker 引用，因為 markers 會重新建立）
+    this.pinnedPointIds = new Set();
 
     // 錯誤追蹤
     this.errorCount = 0;
@@ -225,14 +226,6 @@ export class MarkerClusteringManager {
     try {
       const modeChanged = this.wasClusteredBefore !== this.isClustered;
       
-      // 在重新渲染前，保存所有 pinned markers 的 point data
-      const pinnedPointIds = new Set();
-      for (let marker of this.pinnedSurveyMarkers) {
-        if (marker._surveyPointData) {
-          pinnedPointIds.add(marker._surveyPointData.id);
-        }
-      }
-      
       // 淡出舊 markers（可選動畫）
       if (this.enableAnimation) {
         this.fadeOutMarkers();
@@ -272,7 +265,7 @@ export class MarkerClusteringManager {
               this.visibleMarkersMap.set(point.id, marker);
               
               // 如果這個 point 之前被 pinned，重新應用 pin 狀態
-              if (pinnedPointIds.has(point.id)) {
+              if (this.pinnedPointIds.has(point.id)) {
                 this.toggleMarkerPin(marker, point);
               }
             } catch (e) {
@@ -288,7 +281,7 @@ export class MarkerClusteringManager {
               this.visibleMarkersMap.set(point.id, marker);
               
               // 如果這個 point 之前被 pinned，重新應用 pin 狀態
-              if (pinnedPointIds.has(point.id)) {
+              if (this.pinnedPointIds.has(point.id)) {
                 this.toggleMarkerPin(marker, point);
               }
             } catch (e) {
@@ -471,7 +464,7 @@ export class MarkerClusteringManager {
       marker.openPopup();
       marker._tooltipPinned = true;
       marker._pinnedIsPopup = true;
-      this.pinnedSurveyMarkers.add(marker);
+      this.pinnedPointIds.add(point.id);
     } else {
       // Unpin: 切換回 tooltip
       try {
@@ -489,7 +482,7 @@ export class MarkerClusteringManager {
       });
       marker._tooltipPinned = false;
       marker._pinnedIsPopup = false;
-      this.pinnedSurveyMarkers.delete(marker);
+      this.pinnedPointIds.delete(point.id);
     }
   }
 
@@ -529,6 +522,21 @@ export class MarkerClusteringManager {
   }
 
   /**
+   * 取得所有當前 pinned 的 marker 對象
+   * 用於 mapPopup.js 同步 pinnedSurveyMarkers
+   */
+  getPinnedMarkers() {
+    const pinnedMarkers = new Set();
+    for (let pointId of this.pinnedPointIds) {
+      const marker = this.visibleMarkersMap.get(pointId);
+      if (marker) {
+        pinnedMarkers.add(marker);
+      }
+    }
+    return pinnedMarkers;
+  }
+
+  /**
    * 銷毀 manager（清理資源）
    */
   destroy() {
@@ -550,7 +558,7 @@ export class MarkerClusteringManager {
     }
     this.clusterMarkersMap.clear();
     this.visibleMarkersMap.clear();
-    this.pinnedSurveyMarkers.clear();
+    this.pinnedPointIds.clear();
     console.log('[ClusterManager] Destroyed');
   }
 }

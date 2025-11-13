@@ -186,6 +186,11 @@ export function initMapPopup({
                 surveyPointLayer.addLayer(layer);
               });
             }
+            
+            // Sync pinned markers from clusterManager after layers are updated
+            if (clusterManager.getPinnedMarkers) {
+              pinnedSurveyMarkers = clusterManager.getPinnedMarkers();
+            }
           };
           
           // Listen to map events to update layers dynamically
