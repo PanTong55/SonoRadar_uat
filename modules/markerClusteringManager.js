@@ -342,7 +342,7 @@ export class MarkerClusteringManager {
   createClusterMarker(cluster) {
     const marker = L.marker([cluster.lat, cluster.lng], {
       icon: L.divIcon({
-        html: `<div class="cluster-marker-icon" data-cluster-count="${cluster.count}" title="Click to zoom, ${cluster.count} markers">
+        html: `<div class="cluster-marker-icon" data-cluster-count="${cluster.count}" title="Click to zoom, ${cluster.count} markers" style="pointer-events: auto;">
           ${cluster.count}
         </div>`,
         className: 'cluster-marker-container',
@@ -360,18 +360,26 @@ export class MarkerClusteringManager {
       permanent: false,
     });
 
-    // 點擊聚類 marker 時縮放至該區域
-    marker.on('click', () => {
-      const bbox = this.getBboxForCluster(cluster);
-      this.map.fitBounds(bbox, { padding: 50, duration: 500 });
-    });
-
     // 在 marker 創建完成後添加事件監聽
-    const updateMarkerHoverState = () => {
+    const setupMarkerEvents = () => {
       const el = marker.getElement();
       if (el) {
         const iconDiv = el.querySelector('.cluster-marker-icon');
         if (iconDiv) {
+          // 點擊事件：縮放至該區域
+          iconDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
+            try {
+              const bbox = this.getBboxForCluster(cluster);
+              if (bbox && this.map) {
+                this.map.fitBounds(bbox, { padding: 50, duration: 500 });
+              }
+            } catch (err) {
+              console.error('[ClusterManager] Error fitting bounds:', err);
+            }
+          });
+
+          // Hover 事件
           iconDiv.addEventListener('mouseenter', () => {
             iconDiv.classList.add('cluster-marker-hover');
           });
@@ -383,7 +391,7 @@ export class MarkerClusteringManager {
     };
 
     // 在 DOM 渲染後執行
-    setTimeout(updateMarkerHoverState, 0);
+    setTimeout(setupMarkerEvents, 0);
 
     return marker;
   }

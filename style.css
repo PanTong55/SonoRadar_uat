@@ -2062,6 +2062,7 @@ input.tag-button.editing {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  pointer-events: auto;
 }
 
 .cluster-marker-icon:hover,
