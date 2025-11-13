@@ -25,6 +25,13 @@ export function initMapPopup({
 
   const edgeThreshold = 5;
 
+  let popupWidth = parseInt(localStorage.getItem('mapPopupWidth'), 10);
+  let popupHeight = parseInt(localStorage.getItem('mapPopupHeight'), 10);
+  if (isNaN(popupWidth) || popupWidth <= 0) popupWidth = 600;
+  if (isNaN(popupHeight) || popupHeight <= 0) popupHeight = 600;
+  popup.style.width = `${popupWidth}px`;
+  popup.style.height = `${popupHeight}px`;
+
   function getEdgeState(clientX, clientY) {
     const rect = popup.getBoundingClientRect();
     const x = clientX - rect.left;
