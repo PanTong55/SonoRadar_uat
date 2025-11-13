@@ -28,6 +28,8 @@ export class MarkerClusteringManager {
     this.markerLayerGroup = null;
     this.computationInFlight = false;
     this.pendingComputeRequest = null;
+    this.isClustered = true; // 是否使用聚類模式
+    this.wasClusteredBefore = true; // 上次是否使用聚類（用於過渡動畫）
 
     // 事件節流
     this.zoomThrottleTimer = null;
@@ -204,9 +206,10 @@ export class MarkerClusteringManager {
       this.computationInFlight = false;
       this.currentClusters = result.clusters;
       this.currentVisibleMarkers = result.visiblePoints;
+      this.isClustered = result.isClustered !== false; // 更新聚類模式狀態
       
       console.log(
-        `[ClusterManager] Computed: ${result.clusters.length} clusters, ${result.visiblePoints.length} visible markers`
+        `[ClusterManager] Computed: ${result.clusters.length} clusters, ${result.visiblePoints.length} visible markers (clustered: ${this.isClustered})`
       );
       
       this.renderClusters();
@@ -215,40 +218,63 @@ export class MarkerClusteringManager {
 
   /**
    * 渲染 clusters 和 visible markers
+   * 支援聚類模式和非聚類模式的平滑過渡
    */
   renderClusters() {
     try {
+      const modeChanged = this.wasClusteredBefore !== this.isClustered;
+      
       // 淡出舊 markers（可選動畫）
       if (this.enableAnimation) {
         this.fadeOutMarkers();
       }
 
       // 稍後清除並添加新 markers
+      const fadeOutDuration = this.enableAnimation ? 150 : 0;
       setTimeout(() => {
         this.clusterLayerGroup.clearLayers();
         this.markerLayerGroup.clearLayers();
         this.clusterMarkersMap.clear();
         this.visibleMarkersMap.clear();
 
-        // 渲染 cluster markers
-        for (let cluster of this.currentClusters) {
-          try {
-            const clusterMarker = this.createClusterMarker(cluster);
-            this.clusterLayerGroup.addLayer(clusterMarker);
-            this.clusterMarkersMap.set(cluster.id, clusterMarker);
-          } catch (e) {
-            console.error('[ClusterManager] Error creating cluster marker:', e);
-          }
+        // 如果從聚類切換到非聚類（或反之），顯示過渡訊息
+        if (modeChanged) {
+          console.log(
+            `[ClusterManager] Mode transition: ${this.wasClusteredBefore ? 'Clustered' : 'Unclustered'} → ${this.isClustered ? 'Clustered' : 'Unclustered'}`
+          );
         }
 
-        // 渲染 visible individual markers
-        for (let point of this.currentVisibleMarkers) {
-          try {
-            const marker = this.createIndividualMarker(point);
-            this.markerLayerGroup.addLayer(marker);
-            this.visibleMarkersMap.set(point.id, marker);
-          } catch (e) {
-            console.error('[ClusterManager] Error creating individual marker:', e);
+        if (this.isClustered) {
+          // 聚類模式：渲染 cluster markers 和個別 markers
+          for (let cluster of this.currentClusters) {
+            try {
+              const clusterMarker = this.createClusterMarker(cluster);
+              this.clusterLayerGroup.addLayer(clusterMarker);
+              this.clusterMarkersMap.set(cluster.id, clusterMarker);
+            } catch (e) {
+              console.error('[ClusterManager] Error creating cluster marker:', e);
+            }
+          }
+
+          for (let point of this.currentVisibleMarkers) {
+            try {
+              const marker = this.createIndividualMarker(point);
+              this.markerLayerGroup.addLayer(marker);
+              this.visibleMarkersMap.set(point.id, marker);
+            } catch (e) {
+              console.error('[ClusterManager] Error creating individual marker:', e);
+            }
+          }
+        } else {
+          // 非聚類模式：渲染所有 markers 為個別 markers
+          for (let point of this.currentVisibleMarkers) {
+            try {
+              const marker = this.createIndividualMarker(point);
+              this.markerLayerGroup.addLayer(marker);
+              this.visibleMarkersMap.set(point.id, marker);
+            } catch (e) {
+              console.error('[ClusterManager] Error creating individual marker:', e);
+            }
           }
         }
 
@@ -256,7 +282,10 @@ export class MarkerClusteringManager {
         if (this.enableAnimation) {
           this.fadeInMarkers();
         }
-      }, this.enableAnimation ? 150 : 0);
+        
+        // 更新過渡狀態
+        this.wasClusteredBefore = this.isClustered;
+      }, fadeOutDuration);
     } catch (e) {
       console.error('[ClusterManager] Error during render:', e);
     }
@@ -270,7 +299,8 @@ export class MarkerClusteringManager {
     for (let marker of allMarkers) {
       const el = marker.getElement();
       if (el) {
-        el.style.opacity = '0.5';
+        el.style.opacity = '0.3';
+        el.style.transition = `opacity 150ms ease-out`;
       }
     }
   }

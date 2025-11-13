@@ -147,8 +147,11 @@ class ClusterEngine {
   /**
    * 根據 zoom level 計算聚類半徑
    * zoom 越小 -> 半徑越大 -> 聚類越密集
+   * 高 zoom level (17+) 且點數少於250時返回 -1 表示禁用聚類
    */
-  getClusterRadiusForZoom(zoom) {
+  getClusterRadiusForZoom(zoom, visiblePointCount = 0) {
+    // 高 zoom level 且點數少於250時禁用聚類
+    if (zoom >= 17 && visiblePointCount < 250) return -1; // -1 表示禁用聚類
     if (zoom >= 18) return 0; // 18+: 不聚類
     if (zoom >= 15) return 0.01; // 15-17: 最小聚類
     if (zoom >= 12) return 0.05;
@@ -159,18 +162,31 @@ class ClusterEngine {
 
   /**
    * 計算聚類（基於 zoom level）
-   * 回傳 { clusters: [...], visiblePoints: [...] }
+   * 回傳 { clusters: [...], visiblePoints: [...], isClustered: boolean }
    */
   computeClusters(zoom, mapBounds) {
-    const radiusLatitude = this.getClusterRadiusForZoom(zoom);
+    // 查詢邊界內的點
+    const pointsInBounds = this.quadTree.query(mapBounds);
+    
+    // 檢查是否應禁用聚類
+    const radiusLatitude = this.getClusterRadiusForZoom(zoom, pointsInBounds.length);
+    
+    // 高 zoom level 且點數少於250時禁用聚類
+    if (radiusLatitude === -1) {
+      const visiblePoints = pointsInBounds.map(p => p.data);
+      return { 
+        clusters: [], 
+        visiblePoints, 
+        allPointsInBounds: visiblePoints,
+        isClustered: false // 標記不使用聚類
+      };
+    }
+
     const radiusLongitude = radiusLatitude / Math.cos((mapBounds.minLat + mapBounds.maxLat) / 2 * Math.PI / 180);
 
     const clusters = [];
     const clustered = new Set();
     const visiblePoints = [];
-
-    // 查詢邊界內的點
-    const pointsInBounds = this.quadTree.query(mapBounds);
 
     // 先嘗試聚類
     for (let point of pointsInBounds) {
@@ -212,7 +228,12 @@ class ClusterEngine {
       }
     }
 
-    return { clusters, visiblePoints, allPointsInBounds: pointsInBounds.map(p => p.data) };
+    return { 
+      clusters, 
+      visiblePoints, 
+      allPointsInBounds: pointsInBounds.map(p => p.data),
+      isClustered: true // 標記使用聚類
+    };
   }
 
   /**
