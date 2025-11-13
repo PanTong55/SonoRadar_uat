@@ -295,6 +295,8 @@ export function initMapPopup({
     // ensure pinned survey markers remain visible even if other clicks close tooltips/popups
     map.on('click', () => {
       try {
+        // 如果地圖正在被使用者拖曳，則不要自動重新開啟 pinned tooltip/popup
+        if (isMapDragging) return;
         pinnedSurveyMarkers.forEach(m => {
           try {
             if (m?._tooltipPinned) {
@@ -307,6 +309,8 @@ export function initMapPopup({
     // also listen for clicks outside the map (document) to re-open pinned displays
     document.addEventListener('click', () => {
       try {
+        // 如果使用者正在拖曳地圖，避免在全域點擊事件中重新開啟 pinned tooltip/popup
+        if (isMapDragging) return;
         pinnedSurveyMarkers.forEach(m => {
           try {
             if (m?._tooltipPinned) {
@@ -321,6 +325,8 @@ export function initMapPopup({
     if (map && map.on) {
       map.on('tooltipclose', (e) => {
         try {
+          // 在使用者拖曳地圖時，不要強制重新開啟 tooltip（以免觸發自動平移）
+          if (isMapDragging) return;
           const layer = e.layer || (e.tooltip && e.tooltip._source) || null;
           if (layer && pinnedSurveyMarkers.has(layer) && layer._tooltipPinned && !layer._pinnedIsPopup) {
             setTimeout(() => {
@@ -331,6 +337,8 @@ export function initMapPopup({
       });
       map.on('popupclose', (e) => {
         try {
+          // 在使用者拖曳地圖時，不要強制重新開啟 popup（以免觸發自動平移）
+          if (isMapDragging) return;
           const layer = e.layer || (e.popup && e.popup._source) || (e.popup && e.popup._source) || null;
           if (layer && pinnedSurveyMarkers.has(layer) && layer._tooltipPinned && layer._pinnedIsPopup) {
             setTimeout(() => {
@@ -546,6 +554,8 @@ export function initMapPopup({
                     closeButton: false,
                     autoClose: false,
                     closeOnClick: false,
+                    // Prevent Leaflet from panning the map to keep the popup visible
+                    autoPan: false,
                     offset: L.point(-6, -8)
                   });
                   marker.openPopup();
