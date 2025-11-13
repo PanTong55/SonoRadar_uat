@@ -2047,7 +2047,6 @@ input.tag-button.editing {
   width: 40px;
   height: 40px;
   background: linear-gradient(135deg, #ffe452 0%, #ffbf01 100%);
-  border: 2px solid #000;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2068,7 +2067,8 @@ input.tag-button.editing {
 
 .cluster-marker-icon:hover,
 .cluster-marker-icon.cluster-marker-hover {
-  filter: brightness(0.9);
+  transform: scale(1.2);
+  filter: brightness(1.1);
 }
 
 /* Cluster tooltip */
