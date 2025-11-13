@@ -75,24 +75,9 @@ const expandBackBtn = document.getElementById('expandBackBtn');
 const expandBackCount = document.getElementById('expandBackCount');
 let ignoreNextPause = false;
 const canvasElem = document.getElementById("spectrogram-canvas");
-let offscreen = canvasElem.transferControlToOffscreen();
-let specWorker = new Worker("./spectrogramWorker.js", { type: "module" });
+const offscreen = canvasElem.transferControlToOffscreen();
+const specWorker = new Worker("./spectrogramWorker.js", { type: "module" });
 specWorker.postMessage({ type: "init", canvas: offscreen }, [offscreen]);
-
-// 函式：重新建立 specWorker
-function recreateSpecWorker() {
-  // 終止舊的 worker
-  if (specWorker) {
-    specWorker.terminate();
-  }
-  
-  // 建立新的 canvas offscreen 上下文
-  offscreen = canvasElem.transferControlToOffscreen();
-  
-  // 建立新的 worker
-  specWorker = new Worker("./spectrogramWorker.js", { type: "module" });
-  specWorker.postMessage({ type: "init", canvas: offscreen }, [offscreen]);
-}
 
 const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 if (isMobileDevice) {
@@ -1318,10 +1303,6 @@ expandBackBtn.click();
 
 document.addEventListener("file-loaded", async () => {
   const currentFile = getCurrentFile();
-  
-  // 立即終止舊的 specWorker 並建立新的
-  recreateSpecWorker();
-  
   duration = getWavesurfer().getDuration();
   zoomControl.setZoomLevel(0);
   playPauseBtn.classList.remove('playing', 'paused');
