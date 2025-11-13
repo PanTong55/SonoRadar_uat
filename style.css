@@ -2056,7 +2056,7 @@ input.tag-button.editing {
   font-size: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   cursor: default;
-  transition: filter 0.2s ease;
+  transition: transform 0.2s ease;
   opacity: 1;
   user-select: none;
   -webkit-user-select: none;
@@ -2068,7 +2068,6 @@ input.tag-button.editing {
 .cluster-marker-icon:hover,
 .cluster-marker-icon.cluster-marker-hover {
   transform: scale(1.2);
-  filter: brightness(1.1);
 }
 
 /* Cluster tooltip */

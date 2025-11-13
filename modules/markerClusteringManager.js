@@ -364,7 +364,7 @@ export class MarkerClusteringManager {
     // 聚類 marker 的 tooltip
     marker.bindTooltip(`${cluster.count} survey sites in this area`, {
       direction: 'top',
-      offset: [0, -30],
+      offset: [0, -20],
       className: 'cluster-tooltip',
       permanent: false,
     });
