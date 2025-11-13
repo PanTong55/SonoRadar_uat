@@ -2044,11 +2044,29 @@ input.tag-button.editing {
 
 /* Cluster marker icon */
 .cluster-marker-icon {
-  transition: transform 0.2s ease;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  opacity: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
-.cluster-marker-icon:hover {
-  transform: scale(1.15) !important;
+.cluster-marker-icon:hover,
+.cluster-marker-icon.cluster-marker-hover {
+  transform: scale(1.2);
   filter: brightness(1.1);
 }
 

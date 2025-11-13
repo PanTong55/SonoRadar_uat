@@ -342,20 +342,7 @@ export class MarkerClusteringManager {
   createClusterMarker(cluster) {
     const marker = L.marker([cluster.lat, cluster.lng], {
       icon: L.divIcon({
-        html: `<div class="cluster-marker" style="
-          width: 40px; height: 40px; 
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 50%; 
-          display: flex; align-items: center; justify-content: center;
-          color: white; font-weight: bold; font-size: 14px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-          cursor: pointer;
-          transition: transform 0.2s ease;
-          opacity: 1;
-        "
-        class="cluster-marker-icon"
-        data-cluster-count="${cluster.count}"
-        title="Click to zoom, ${cluster.count} markers">
+        html: `<div class="cluster-marker-icon" data-cluster-count="${cluster.count}" title="Click to zoom, ${cluster.count} markers">
           ${cluster.count}
         </div>`,
         className: 'cluster-marker-container',
@@ -366,7 +353,7 @@ export class MarkerClusteringManager {
     });
 
     // 聚類 marker 的 tooltip
-    marker.bindTooltip(`${cluster.count} markers in this area`, {
+    marker.bindTooltip(`${cluster.count} survey sites in this area`, {
       direction: 'top',
       offset: [0, -10],
       className: 'cluster-tooltip',
@@ -379,26 +366,24 @@ export class MarkerClusteringManager {
       this.map.fitBounds(bbox, { padding: 50, duration: 500 });
     });
 
-    // 滑鼠懸停時放大
-    marker.on('mouseover', () => {
+    // 在 marker 創建完成後添加事件監聽
+    const updateMarkerHoverState = () => {
       const el = marker.getElement();
       if (el) {
-        const icon = el.querySelector('.cluster-marker-icon');
-        if (icon) {
-          icon.style.transform = 'scale(1.2)';
+        const iconDiv = el.querySelector('.cluster-marker-icon');
+        if (iconDiv) {
+          iconDiv.addEventListener('mouseenter', () => {
+            iconDiv.classList.add('cluster-marker-hover');
+          });
+          iconDiv.addEventListener('mouseleave', () => {
+            iconDiv.classList.remove('cluster-marker-hover');
+          });
         }
       }
-    });
+    };
 
-    marker.on('mouseout', () => {
-      const el = marker.getElement();
-      if (el) {
-        const icon = el.querySelector('.cluster-marker-icon');
-        if (icon) {
-          icon.style.transform = 'scale(1)';
-        }
-      }
-    });
+    // 在 DOM 渲染後執行
+    setTimeout(updateMarkerHoverState, 0);
 
     return marker;
   }
