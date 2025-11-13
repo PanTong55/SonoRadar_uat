@@ -225,6 +225,14 @@ export class MarkerClusteringManager {
     try {
       const modeChanged = this.wasClusteredBefore !== this.isClustered;
       
+      // 在重新渲染前，保存所有 pinned markers 的 point data
+      const pinnedPointIds = new Set();
+      for (let marker of this.pinnedSurveyMarkers) {
+        if (marker._surveyPointData) {
+          pinnedPointIds.add(marker._surveyPointData.id);
+        }
+      }
+      
       // 淡出舊 markers（可選動畫）
       if (this.enableAnimation) {
         this.fadeOutMarkers();
@@ -262,6 +270,11 @@ export class MarkerClusteringManager {
               const marker = this.createIndividualMarker(point);
               this.markerLayerGroup.addLayer(marker);
               this.visibleMarkersMap.set(point.id, marker);
+              
+              // 如果這個 point 之前被 pinned，重新應用 pin 狀態
+              if (pinnedPointIds.has(point.id)) {
+                this.toggleMarkerPin(marker, point);
+              }
             } catch (e) {
               console.error('[ClusterManager] Error creating individual marker:', e);
             }
@@ -273,6 +286,11 @@ export class MarkerClusteringManager {
               const marker = this.createIndividualMarker(point);
               this.markerLayerGroup.addLayer(marker);
               this.visibleMarkersMap.set(point.id, marker);
+              
+              // 如果這個 point 之前被 pinned，重新應用 pin 狀態
+              if (pinnedPointIds.has(point.id)) {
+                this.toggleMarkerPin(marker, point);
+              }
             } catch (e) {
               console.error('[ClusterManager] Error creating individual marker:', e);
             }
