@@ -2046,7 +2046,7 @@ input.tag-button.editing {
 .cluster-marker-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, #ffd700 0%, #ffbf00 100%);
+  background: linear-gradient(135deg, #ffe452 0%, #ffbf01 100%);
   border: 2px solid #000;
   border-radius: 50%;
   display: flex;
@@ -2073,9 +2073,9 @@ input.tag-button.editing {
 
 /* Cluster tooltip */
 .cluster-tooltip {
-  background-color: rgba(0, 0, 0, 0.9) !important;
-  color: #ffd700 !important;
-  border: 1px solid #ffd700 !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #222 !important;
+  border: 1px solid #fff !important;
   border-radius: 6px !important;
   padding: 6px 10px !important;
   font-size: 12px !important;
@@ -2083,13 +2083,6 @@ input.tag-button.editing {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
 }
 
-.cluster-tooltip.leaflet-tooltip-left::before {
-  border-left-color: rgba(0, 0, 0, 0.9) !important;
-}
-
-.cluster-tooltip.leaflet-tooltip-right::before {
-  border-right-color: rgba(0, 0, 0, 0.9) !important;
-}
 
 /* Individual survey marker when not clustered */
 .map-marker-survey {
