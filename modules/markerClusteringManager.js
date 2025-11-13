@@ -266,7 +266,7 @@ export class MarkerClusteringManager {
               
               // 如果這個 point 之前被 pinned，重新應用 pin 狀態
               if (this.pinnedPointIds.has(point.id)) {
-                this.toggleMarkerPin(marker, point);
+                this.toggleMarkerPin(marker, point, true);
               }
             } catch (e) {
               console.error('[ClusterManager] Error creating individual marker:', e);
@@ -282,7 +282,7 @@ export class MarkerClusteringManager {
               
               // 如果這個 point 之前被 pinned，重新應用 pin 狀態
               if (this.pinnedPointIds.has(point.id)) {
-                this.toggleMarkerPin(marker, point);
+                this.toggleMarkerPin(marker, point, true);
               }
             } catch (e) {
               console.error('[ClusterManager] Error creating individual marker:', e);
@@ -443,7 +443,7 @@ export class MarkerClusteringManager {
   /**
    * 切換 marker 的 pin 狀態
    */
-  toggleMarkerPin(marker, point) {
+  toggleMarkerPin(marker, point, delayOpen = false) {
     if (!marker._tooltipPinned) {
       // Pin: 切換到 popup
       try {
@@ -461,10 +461,19 @@ export class MarkerClusteringManager {
         autoPan: false,
         offset: L.point(-6, -8),
       });
-      marker.openPopup();
+      
       marker._tooltipPinned = true;
       marker._pinnedIsPopup = true;
       this.pinnedPointIds.add(point.id);
+      
+      // 如果 delayOpen 為 true，延遲打開 popup（用於重建時的恢復）
+      if (delayOpen) {
+        setTimeout(() => {
+          try { if (marker._tooltipPinned) marker.openPopup(); } catch (err) {}
+        }, 50);
+      } else {
+        marker.openPopup();
+      }
     } else {
       // Unpin: 切換回 tooltip
       try {

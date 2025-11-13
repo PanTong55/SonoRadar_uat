@@ -169,6 +169,17 @@ export function initMapPopup({
             const clusterLayerGroup = clusterManager.getClusterLayerGroup();
             const markerLayerGroup = clusterManager.getMarkerLayerGroup();
             
+            // 在清除前，保存 pinned markers 資訊
+            const pinnedMarkersData = [];
+            surveyPointLayer.eachLayer(layer => {
+              if (layer._tooltipPinned && layer._pinnedIsPopup) {
+                pinnedMarkersData.push({
+                  id: layer._surveyPointData?.id,
+                  shouldReopen: true
+                });
+              }
+            });
+            
             surveyPointLayer.clearLayers();
             
             // Determine which layers to show based on zoom and point count
@@ -190,6 +201,16 @@ export function initMapPopup({
             // Sync pinned markers from clusterManager after layers are updated
             if (clusterManager.getPinnedMarkers) {
               pinnedSurveyMarkers = clusterManager.getPinnedMarkers();
+              // 重新打開所有 pinned popups（因為層重新添加時 popup 會被關閉）
+              setTimeout(() => {
+                pinnedSurveyMarkers.forEach(m => {
+                  try {
+                    if (m?._tooltipPinned && m._pinnedIsPopup) {
+                      m.openPopup();
+                    }
+                  } catch (e) {}
+                });
+              }, 20);
             }
           };
           
