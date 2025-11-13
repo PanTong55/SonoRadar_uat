@@ -2080,33 +2080,3 @@ input.tag-button.editing {
 .map-marker-survey:hover {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
-
-/* Survey point tooltip */
-.map-tooltip {
-  background-color: rgba(51, 51, 51, 0.9) !important;
-  color: #fff !important;
-  border: none !important;
-  border-radius: 4px !important;
-  padding: 4px 8px !important;
-  font-size: 11px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
-}
-
-.map-tooltip.leaflet-tooltip-left::before {
-  border-left-color: rgba(51, 51, 51, 0.9) !important;
-}
-
-.map-tooltip.leaflet-tooltip-right::before {
-  border-right-color: rgba(51, 51, 51, 0.9) !important;
-}
-
-.map-tooltip-pinned {
-  background-color: rgba(76, 175, 80, 0.95) !important;
-}
-
-.map-tooltip-pinned.leaflet-popup-content-wrapper {
-  background-color: rgba(76, 175, 80, 0.95) !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-}
-
