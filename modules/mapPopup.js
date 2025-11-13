@@ -1,6 +1,7 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
 import { showMessageBox } from './messageBox.js';
 import { Dropdown } from './dropdown.js';
+import { ClusterController } from './clusterController.js';
 
 let importKmlFileFn = null;
 
@@ -28,68 +29,17 @@ export function initMapPopup({
     const rect = popup.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-  
+
     const withinVertical = y >= -edgeThreshold && y <= rect.height + edgeThreshold;
     const withinHorizontal = x >= -edgeThreshold && x <= rect.width + edgeThreshold;
-  
+
     const onLeft   = Math.abs(x - 0) <= edgeThreshold && withinVertical;
     const onRight  = Math.abs(x - rect.width) <= edgeThreshold && withinVertical;
     const onTop    = Math.abs(y - 0) <= edgeThreshold && withinHorizontal;
     const onBottom = Math.abs(y - rect.height) <= edgeThreshold && withinHorizontal;
-  
+
     return { onLeft, onRight, onTop, onBottom };
   }
-
-  function edgeCursor(state) {
-    const { onLeft, onRight, onTop, onBottom } = state;
-    let cursor = '';
-    if ((onLeft && onTop) || (onRight && onBottom)) {
-      cursor = 'nwse-resize';
-    } else if ((onRight && onTop) || (onLeft && onBottom)) {
-      cursor = 'nesw-resize';
-    } else if (onLeft || onRight) {
-      cursor = 'ew-resize';
-    } else if (onTop || onBottom) {
-      cursor = 'ns-resize';
-    }
-    return cursor;
-  }
-  let popupWidth = parseInt(localStorage.getItem('mapPopupWidth'), 10);
-  let popupHeight = parseInt(localStorage.getItem('mapPopupHeight'), 10);
-  if (isNaN(popupWidth) || popupWidth <= 0) popupWidth = 600;
-  if (isNaN(popupHeight) || popupHeight <= 0) popupHeight = 600;
-  popup.style.width = `${popupWidth}px`;
-  popup.style.height = `${popupHeight}px`;
-
-  let map = null;
-  let markers = [];
-  // track survey markers whose tooltip was pinned (should remain visible)
-  let pinnedSurveyMarkers = new Set();
-  let polylines = [];
-  let routeBtn = null;
-  let routeToggleBtn = null;
-  let routeBtnGroup = null;
-  let kmlPolylines = [];
-  let importBtn = null;
-  let clearKmlBtn = null;
-  let drawBtn = null;
-  let textBtn = null;
-  let professionalBtn = null;
-  let exportBtn = null;
-  let textMode = false;
-  let textMarkers = [];
-  let activeTextInput = null;
-  let suppressNextTextClick = false;
-  let drawControl = null;
-  let drawnItems = null;
-  let drawControlVisible = false;
-  let layersControl = null;
-  let hkgridLayer = null;
-  // overlays handling (moved to outer scope so togglePopup can access)
-  let overlaysPending = []; // { layer, name }
-  let overlaysLoaded = false; // whether overlays have been added to layersControl
-  let overlaysPromptShown = false; // whether we already showed the password prompt (only show once)
-  const HASHED_PASSWORD = '8e81149cfda80214b01f32e8e96ede43ee9c42b797e7af1c5c979429622ce40c';
 
   function loadOverlays() {
     if (overlaysLoaded) return;
@@ -514,80 +464,65 @@ export function initMapPopup({
         promptForPasswordIfNeeded();
       });
     
-      // Survey point layer
+      // Survey point layer (clustering PoC)
       let surveyPointLayer = null;
+      let clusterController = null;
+      let clusterMarkersPool = [];
+      const clusterLayerGroup = L.layerGroup();
       fetch("https://opensheet.elk.sh/1Al_sWwiIU6DtQv6sMFvXb9wBUbBiE-zcYk8vEwV82x8/sheet3")
         .then(r => r.json())
-      .then(points => {
-        const markers = points.map(pt => {
+        .then(points => {
+          const pts = points.map((pt, idx) => {
             const lat = parseFloat(pt.Latitude);
             const lon = parseFloat(pt.Longitude);
             if (isNaN(lat) || isNaN(lon)) return null;
-            const marker = L.marker([lat, lon], {
-              icon: L.divIcon({
-                html: '<i class="fa-solid fa-location-dot" style="color:#000000; text-shadow: 0 0 2px #fff, 0 0 6px #fff, 0 0 0px #fff, 0 0 1px #fff;"></i>',
-                className: 'map-marker-survey',
-                iconSize: [22, 22],
-                iconAnchor: [11, 11]
-              })
-            });
-            // default: non-permanent tooltip (shows on hover)
-            marker.bindTooltip(pt.Location, {
-              direction: 'top',
-              offset: [-6, -22],
-              className: 'map-tooltip',
-              permanent: false
-            });
-            // toggle persistent display on click: use Popup for pinned state so it won't auto-close
-            // click once -> show persistent popup; click again -> revert to hover tooltip
-            marker._tooltipPinned = false;
-            marker._pinnedIsPopup = false;
-            marker.on('click', (evt) => {
-              try { evt.originalEvent && evt.originalEvent.stopPropagation(); } catch (e) {}
-              try {
-                if (!marker._tooltipPinned) {
-                  // switch to popup (persistent)
-                  try { marker.unbindTooltip(); } catch (e) {}
-                  try { marker.unbindPopup(); } catch (e) {}
-                  marker.bindPopup(pt.Location, {
-                    className: 'map-tooltip map-tooltip-pinned',
-                    closeButton: false,
-                    autoClose: false,
-                    closeOnClick: false,
-                    // Prevent Leaflet from panning the map to keep the popup visible
-                    autoPan: false,
-                    offset: L.point(-6, -8)
-                  });
-                  marker.openPopup();
-                  marker._tooltipPinned = true;
-                  marker._pinnedIsPopup = true;
-                  pinnedSurveyMarkers.add(marker);
-                } else {
-                  // unpin: close popup and restore hover tooltip
-                  try { marker.closePopup(); } catch (e) {}
-                  try { marker.unbindPopup(); } catch (e) {}
-                  marker.bindTooltip(pt.Location, {
-                    direction: 'top',
-                    offset: [-6, -22],
-                    className: 'map-tooltip',
-                    permanent: false
-                  });
-                  marker._tooltipPinned = false;
-                  marker._pinnedIsPopup = false;
-                  pinnedSurveyMarkers.delete(marker);
-                }
-              } catch (e) {
-                // ignore any toggle errors
+            return { id: pt.id || ('p_' + idx), lat, lon, props: { label: pt.Location } };
+          }).filter(Boolean);
+
+          clusterController = ClusterController(map, { radiusPx: 60, maxVisible: 500, debounceMs: 120 });
+          clusterController.setPoints(pts);
+          // render callback
+          clusterController.setOnClusters((clusters) => {
+            // simple PoC render: clear & draw
+            clusterLayerGroup.clearLayers();
+            clusters.forEach(c => {
+              if (c.type === 'cluster') {
+                const [lon, lat] = c.geometry;
+                const icon = L.divIcon({ className: 'map-cluster-icon', html: '<div class="cluster-count">' + (c.properties.point_count || 0) + '</div>' });
+                const mk = clusterMarkersPool.pop() || L.marker([lat, lon]);
+                mk.setLatLng([lat, lon]);
+                mk.setIcon(icon);
+                mk.addTo(clusterLayerGroup);
+                mk.on('click', () => { try { map.setView([lat, lon], Math.min(map.getZoom() + 2, map.getMaxZoom())); } catch(e) {} });
+              } else if (c.type === 'point') {
+                const [lon, lat] = c.geometry;
+                const icon = L.divIcon({ className: 'map-marker-survey', html: '<i class="fa-solid fa-location-dot"></i>' });
+                const mk = clusterMarkersPool.pop() || L.marker([lat, lon]);
+                mk.setLatLng([lat, lon]);
+                mk.setIcon(icon);
+                mk.addTo(clusterLayerGroup);
+                mk.on('click', (e) => {
+                  e.originalEvent && e.originalEvent.stopPropagation && e.originalEvent.stopPropagation();
+                  try { mk.unbindTooltip(); } catch (e) {}
+                  try { mk.unbindPopup(); } catch (e) {}
+                  mk.bindPopup(c.properties.label || '', { className: 'map-tooltip map-tooltip-pinned', closeButton: false, autoClose: false, closeOnClick: false, autoPan: false, offset: L.point(-6, -8) });
+                  mk.openPopup();
+                  pinnedSurveyMarkers.add(mk);
+                });
               }
             });
-            return marker;
-          }).filter(Boolean);
-          surveyPointLayer = L.layerGroup(markers);
-          // postpone adding overlay to control until authorized
-          overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
-          // if popup is already open, prompt now
+          });
+
+          // initial query & add layer to overlaysPending
+          const b = map.getBounds();
+          clusterController.query([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], map.getZoom());
+          map.on('moveend zoomend', () => {
+            const bb = map.getBounds();
+            clusterController.query([bb.getWest(), bb.getSouth(), bb.getEast(), bb.getNorth()], map.getZoom());
+          });
+          overlaysPending.push({ layer: clusterLayerGroup, name: 'Survey point (clustered)' });
           promptForPasswordIfNeeded();
-        });
+        }).catch(() => {});
 
     drawnItems = new L.FeatureGroup().addTo(map);
     const canvasRenderer = L.canvas({ pane: 'annotationPane' });
