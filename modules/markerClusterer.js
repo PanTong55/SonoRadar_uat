@@ -199,17 +199,29 @@ class ClusterEngine {
       );
 
       if (nearby.length > 1) {
-        // 形成聚類
+        // 形成聚類 - 先過濾有效的點
         const clusterPoints = nearby.map(p => p.data);
-        const centerLat = clusterPoints.reduce((sum, p) => sum + p.lat, 0) / clusterPoints.length;
-        const centerLng = clusterPoints.reduce((sum, p) => sum + p.lng, 0) / clusterPoints.length;
+        const validClusterPoints = clusterPoints.filter(p => {
+          const lat = Number(p.lat);
+          const lng = Number(p.lng);
+          return isFinite(lat) && isFinite(lng);
+        });
+
+        if (validClusterPoints.length === 0) {
+          // 如果沒有有效的點，跳過這個聚類
+          clustered.add(point.id);
+          continue;
+        }
+
+        const centerLat = validClusterPoints.reduce((sum, p) => sum + Number(p.lat), 0) / validClusterPoints.length;
+        const centerLng = validClusterPoints.reduce((sum, p) => sum + Number(p.lng), 0) / validClusterPoints.length;
 
         clusters.push({
           id: `cluster_${clusters.length}`,
           lat: centerLat,
           lng: centerLng,
-          count: clusterPoints.length,
-          points: clusterPoints,
+          count: validClusterPoints.length,
+          points: clusterPoints,  // 保留所有點（包括無效的）用於其他用途
         });
 
         for (let p of nearby) {

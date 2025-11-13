@@ -102,12 +102,21 @@ export class MarkerClusteringManager {
    * 將 Leaflet marker 點資料序列化以傳送至 Worker
    */
   serializePoints(points) {
-    return points.map((p, idx) => ({
-      id: p.id || `survey_${idx}`,
-      lat: p.lat,
-      lng: p.lng,
-      meta: { location: p.location || 'Survey Point' },
-    }));
+    return points.map((p, idx) => {
+      const lat = Number(p.lat);
+      const lng = Number(p.lng);
+      
+      if (!isFinite(lat) || !isFinite(lng)) {
+        console.warn('[ClusterManager] Invalid point at index', idx, ':', p);
+      }
+      
+      return {
+        id: p.id || `survey_${idx}`,
+        lat: lat,
+        lng: lng,
+        meta: { location: p.location || 'Survey Point' },
+      };
+    });
   }
 
   /**
@@ -369,16 +378,17 @@ export class MarkerClusteringManager {
           // 點擊事件：縮放至該區域
           iconDiv.addEventListener('click', (e) => {
             e.stopPropagation();
+            console.log('[ClusterManager] Cluster clicked:', cluster);
             try {
               const bbox = this.getBboxForCluster(cluster);
               if (bbox && this.map) {
                 console.log('[ClusterManager] Fitting bounds for cluster:', cluster.id);
                 this.map.fitBounds(bbox, { padding: 50, duration: 500 });
               } else {
-                console.warn('[ClusterManager] Cannot fit bounds: bbox is', bbox);
+                console.warn('[ClusterManager] Cannot fit bounds: bbox is', bbox, 'cluster:', cluster);
               }
             } catch (err) {
-              console.error('[ClusterManager] Error fitting bounds:', err);
+              console.error('[ClusterManager] Error fitting bounds:', err, 'cluster:', cluster);
             }
           });
 
@@ -495,24 +505,42 @@ export class MarkerClusteringManager {
    * 計算聚類的邊界框
    */
   getBboxForCluster(cluster) {
-    if (!cluster || !cluster.points || cluster.points.length === 0) {
-      console.warn('[ClusterManager] Invalid cluster data:', cluster);
+    if (!cluster) {
+      console.warn('[ClusterManager] Cluster is null/undefined');
       return null;
     }
 
+    if (!cluster.points || !Array.isArray(cluster.points)) {
+      console.warn('[ClusterManager] Cluster.points is not an array:', cluster);
+      return null;
+    }
+
+    if (cluster.points.length === 0) {
+      console.warn('[ClusterManager] Cluster has no points');
+      return null;
+    }
+
+    // 調試：打印前幾個點的結構
+    console.log('[ClusterManager] First point in cluster:', cluster.points[0]);
+
     const validPoints = cluster.points.filter(p => {
-      const hasLat = typeof p.lat === 'number' && !isNaN(p.lat);
-      const hasLng = typeof p.lng === 'number' && !isNaN(p.lng);
-      return hasLat && hasLng;
+      if (!p) return false;
+      const lat = Number(p.lat);
+      const lng = Number(p.lng);
+      const isValid = !isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng);
+      if (!isValid) {
+        console.warn('[ClusterManager] Invalid point:', p, '-> lat:', lat, 'lng:', lng);
+      }
+      return isValid;
     });
 
     if (validPoints.length === 0) {
-      console.warn('[ClusterManager] No valid points in cluster:', cluster);
+      console.warn('[ClusterManager] No valid points in cluster:', cluster.points);
       return null;
     }
 
-    const lats = validPoints.map(p => p.lat);
-    const lngs = validPoints.map(p => p.lng);
+    const lats = validPoints.map(p => Number(p.lat));
+    const lngs = validPoints.map(p => Number(p.lng));
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
@@ -524,6 +552,7 @@ export class MarkerClusteringManager {
       return null;
     }
 
+    console.log('[ClusterManager] Valid bbox for cluster:', { minLat, maxLat, minLng, maxLng });
     return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
   }
 
