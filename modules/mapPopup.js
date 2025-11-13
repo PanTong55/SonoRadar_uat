@@ -1,8 +1,10 @@
 import { getCurrentIndex, getFileMetadata, getFileList, getFileIconState } from './fileState.js';
 import { showMessageBox } from './messageBox.js';
 import { Dropdown } from './dropdown.js';
+import MarkerClusteringManager from './markerClusteringManager.js';
 
 let importKmlFileFn = null;
+let clusterManager = null;
 
 export function initMapPopup({
   buttonId = 'mapBtn',
@@ -514,80 +516,41 @@ export function initMapPopup({
         promptForPasswordIfNeeded();
       });
     
-      // Survey point layer
+      // Survey point layer with dynamic clustering
       let surveyPointLayer = null;
       fetch("https://opensheet.elk.sh/1Al_sWwiIU6DtQv6sMFvXb9wBUbBiE-zcYk8vEwV82x8/sheet3")
         .then(r => r.json())
       .then(points => {
-        const markers = points.map(pt => {
+        // 初始化聚類管理器
+        if (!clusterManager) {
+          clusterManager = new MarkerClusteringManager(map, {
+            maxVisibleMarkers: 500,
+            enableAnimation: true,
+            animationDuration: 300,
+          });
+        }
+
+        // 轉換數據格式用於聚類系統
+        const formattedPoints = points
+          .filter(pt => {
             const lat = parseFloat(pt.Latitude);
             const lon = parseFloat(pt.Longitude);
-            if (isNaN(lat) || isNaN(lon)) return null;
-            const marker = L.marker([lat, lon], {
-              icon: L.divIcon({
-                html: '<i class="fa-solid fa-location-dot" style="color:#000000; text-shadow: 0 0 2px #fff, 0 0 6px #fff, 0 0 0px #fff, 0 0 1px #fff;"></i>',
-                className: 'map-marker-survey',
-                iconSize: [22, 22],
-                iconAnchor: [11, 11]
-              })
-            });
-            // default: non-permanent tooltip (shows on hover)
-            marker.bindTooltip(pt.Location, {
-              direction: 'top',
-              offset: [-6, -22],
-              className: 'map-tooltip',
-              permanent: false
-            });
-            // toggle persistent display on click: use Popup for pinned state so it won't auto-close
-            // click once -> show persistent popup; click again -> revert to hover tooltip
-            marker._tooltipPinned = false;
-            marker._pinnedIsPopup = false;
-            marker.on('click', (evt) => {
-              try { evt.originalEvent && evt.originalEvent.stopPropagation(); } catch (e) {}
-              try {
-                if (!marker._tooltipPinned) {
-                  // switch to popup (persistent)
-                  try { marker.unbindTooltip(); } catch (e) {}
-                  try { marker.unbindPopup(); } catch (e) {}
-                  marker.bindPopup(pt.Location, {
-                    className: 'map-tooltip map-tooltip-pinned',
-                    closeButton: false,
-                    autoClose: false,
-                    closeOnClick: false,
-                    // Prevent Leaflet from panning the map to keep the popup visible
-                    autoPan: false,
-                    offset: L.point(-6, -8)
-                  });
-                  marker.openPopup();
-                  marker._tooltipPinned = true;
-                  marker._pinnedIsPopup = true;
-                  pinnedSurveyMarkers.add(marker);
-                } else {
-                  // unpin: close popup and restore hover tooltip
-                  try { marker.closePopup(); } catch (e) {}
-                  try { marker.unbindPopup(); } catch (e) {}
-                  marker.bindTooltip(pt.Location, {
-                    direction: 'top',
-                    offset: [-6, -22],
-                    className: 'map-tooltip',
-                    permanent: false
-                  });
-                  marker._tooltipPinned = false;
-                  marker._pinnedIsPopup = false;
-                  pinnedSurveyMarkers.delete(marker);
-                }
-              } catch (e) {
-                // ignore any toggle errors
-              }
-            });
-            return marker;
-          }).filter(Boolean);
-          surveyPointLayer = L.layerGroup(markers);
-          // postpone adding overlay to control until authorized
-          overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
-          // if popup is already open, prompt now
-          promptForPasswordIfNeeded();
-        });
+            return !isNaN(lat) && !isNaN(lon);
+          })
+          .map((pt, idx) => ({
+            id: `survey_${idx}`,
+            lat: parseFloat(pt.Latitude),
+            lng: parseFloat(pt.Longitude),
+            location: pt.Location,
+          }));
+
+        clusterManager.setSurveyPoints(formattedPoints);
+
+        // 保留原 surveyPointLayer 以供 overlays 使用（會通過 clustering 管理器隱式渲染）
+        surveyPointLayer = L.layerGroup([]);
+        overlaysPending.push({ layer: surveyPointLayer, name: 'Survey point' });
+        promptForPasswordIfNeeded();
+      });
 
     drawnItems = new L.FeatureGroup().addTo(map);
     const canvasRenderer = L.canvas({ pane: 'annotationPane' });

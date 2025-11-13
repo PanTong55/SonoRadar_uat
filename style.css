@@ -2034,3 +2034,79 @@ input.tag-button.editing {
   color: #888;
   pointer-events: none;
 }
+
+/* === Marker Clustering System === */
+
+/* Cluster marker container */
+.cluster-marker-container {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* Cluster marker icon */
+.cluster-marker-icon {
+  transition: transform 0.2s ease;
+}
+
+.cluster-marker-icon:hover {
+  transform: scale(1.15) !important;
+  filter: brightness(1.1);
+}
+
+/* Cluster tooltip */
+.cluster-tooltip {
+  background-color: rgba(102, 126, 234, 0.9) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.cluster-tooltip.leaflet-tooltip-left::before {
+  border-left-color: rgba(102, 126, 234, 0.9) !important;
+}
+
+.cluster-tooltip.leaflet-tooltip-right::before {
+  border-right-color: rgba(102, 126, 234, 0.9) !important;
+}
+
+/* Individual survey marker when not clustered */
+.map-marker-survey {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.map-marker-survey:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+/* Survey point tooltip */
+.map-tooltip {
+  background-color: rgba(51, 51, 51, 0.9) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 4px !important;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+.map-tooltip.leaflet-tooltip-left::before {
+  border-left-color: rgba(51, 51, 51, 0.9) !important;
+}
+
+.map-tooltip.leaflet-tooltip-right::before {
+  border-right-color: rgba(51, 51, 51, 0.9) !important;
+}
+
+.map-tooltip-pinned {
+  background-color: rgba(76, 175, 80, 0.95) !important;
+}
+
+.map-tooltip-pinned.leaflet-popup-content-wrapper {
+  background-color: rgba(76, 175, 80, 0.95) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
