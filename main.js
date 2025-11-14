@@ -1355,3 +1355,11 @@ window.addEventListener('resize', () => {
     autoIdControl?.updateMarkers();
   }
 });
+
+// Warn user before closing the tab/window so they must confirm.
+window.addEventListener('beforeunload', (e) => {
+  // Standard way to trigger a confirmation dialog in modern browsers.
+  // Browsers will typically show a generic message; custom text is ignored.
+  e.preventDefault();
+  e.returnValue = '';
+});
