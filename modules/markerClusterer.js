@@ -149,9 +149,9 @@ class ClusterEngine {
    * zoom 越小 -> 半徑越大 -> 聚類越密集
    */
   getClusterRadiusForZoom(zoom, visiblePointCount = 0) {
-    if (zoom >= 14 && visiblePointCount < 400) return -1; // -1 表示禁用聚類
+    if (zoom >= 14 && visiblePointCount < 300) return -1; // -1 表示禁用聚類
     if (zoom >= 16) return 0; // 16+: 不聚類
-    if (zoom >= 14) return 0.02; // 14-15: 最小聚類
+    if (zoom >= 14) return 0.01; // 14-15: 最小聚類
     if (zoom >= 12) return 0.03;
     if (zoom >= 10) return 0.1;
     if (zoom >= 8) return 0.2;

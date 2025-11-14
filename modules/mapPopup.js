@@ -181,19 +181,15 @@ export function initMapPopup({
             
             surveyPointLayer.clearLayers();
             
-            // 使用 clusterManager 的決策結果，而不是在這裡重複計算
-            // ClusterEngine 已根據 zoom 和 visiblePointCount 做出了聚類決策
             const isClustered = clusterManager.isClustered;
             
             console.log(`[MapPopup] updateSurveyPointLayers: isClustered=${isClustered}, clusters=${clusterManager.currentClusters?.length || 0}, visibleMarkers=${clusterManager.currentVisibleMarkers?.length || 0}`);
             
             if (isClustered && clusterLayerGroup) {
-              // 聚類模式：添加 cluster markers
               clusterLayerGroup.eachLayer(layer => {
                 surveyPointLayer.addLayer(layer);
               });
             } else if (!isClustered && markerLayerGroup) {
-              // 非聚類模式：添加 individual markers
               markerLayerGroup.eachLayer(layer => {
                 surveyPointLayer.addLayer(layer);
               });
