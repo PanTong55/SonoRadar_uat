@@ -45,12 +45,16 @@ self.onmessage = async (event) => {
 
         const result = clusterEngine.computeClusters(payload.zoom, payload.bounds);
 
-        // 回傳結果（clusters 和 visiblePoints）
+        // 回傳結果（clusters、visiblePoints 與是否採用聚類模式）
         self.postMessage({
           type: 'CLUSTERS_COMPUTED',
           result: {
             clusters: result.clusters,
             visiblePoints: result.visiblePoints,
+            // 傳回 engine 判定的模式，主線程會以此決定要不要呈現 cluster markers
+            isClustered: result.isClustered,
+            // 若有需要，主線程也可以取用 bounds 內的所有點
+            allPointsInBounds: result.allPointsInBounds || [],
             timestamp: Date.now(),
           },
         });
