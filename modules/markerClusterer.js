@@ -147,18 +147,11 @@ class ClusterEngine {
   /**
    * 根據 zoom level 計算聚類半徑
    * zoom 越小 -> 半徑越大 -> 聚類越密集
-   * 在 zoom 14 時，如果可見點數 < 300，禁用聚類；>= 300 時啟用聚類
    */
   getClusterRadiusForZoom(zoom, visiblePointCount = 0) {
-    // zoom 16+: 完全不聚類
-    if (zoom >= 16) return 0;
-    
-    // zoom 14-15: 根據可見點數決定是否聚類
-    if (zoom >= 14) {
-      if (visiblePointCount < 300) return -1; // -1 表示禁用聚類
-      return 0.02; // >= 300 點時使用最小聚類
-    }
-    
+    if (zoom >= 14 && visiblePointCount < 400) return -1; // -1 表示禁用聚類
+    if (zoom >= 16) return 0; // 16+: 不聚類
+    if (zoom >= 14) return 0.02; // 14-15: 最小聚類
     if (zoom >= 12) return 0.03;
     if (zoom >= 10) return 0.1;
     if (zoom >= 8) return 0.2;
@@ -176,7 +169,7 @@ class ClusterEngine {
     // 檢查是否應禁用聚類
     const radiusLatitude = this.getClusterRadiusForZoom(zoom, pointsInBounds.length);
     
-    // 高 zoom level 且點數少於 400 時禁用聚類
+    // 高 zoom level 且點數少於250時禁用聚類
     if (radiusLatitude === -1) {
       const visiblePoints = pointsInBounds.map(p => p.data);
       return { 
