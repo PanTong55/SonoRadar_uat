@@ -165,7 +165,6 @@ export function initMapPopup({
           const updateSurveyPointLayers = () => {
             if (!map.hasLayer(surveyPointLayer)) return; // Only update if overlay is checked
             
-            const zoom = map.getZoom();
             const clusterLayerGroup = clusterManager.getClusterLayerGroup();
             const markerLayerGroup = clusterManager.getMarkerLayerGroup();
             
@@ -182,17 +181,19 @@ export function initMapPopup({
             
             surveyPointLayer.clearLayers();
             
-            // Determine which layers to show based on zoom and point count
-            const visiblePointCount = clusterManager.currentVisibleMarkers?.length || 0;
-            const shouldCluster = zoom < 14 || visiblePointCount >= 400;
+            // 使用 clusterManager 的決策結果，而不是在這裡重複計算
+            // ClusterEngine 已根據 zoom 和 visiblePointCount 做出了聚類決策
+            const isClustered = clusterManager.isClustered;
             
-            if (shouldCluster && clusterLayerGroup) {
-              // Add cluster layers
+            console.log(`[MapPopup] updateSurveyPointLayers: isClustered=${isClustered}, clusters=${clusterManager.currentClusters?.length || 0}, visibleMarkers=${clusterManager.currentVisibleMarkers?.length || 0}`);
+            
+            if (isClustered && clusterLayerGroup) {
+              // 聚類模式：添加 cluster markers
               clusterLayerGroup.eachLayer(layer => {
                 surveyPointLayer.addLayer(layer);
               });
-            } else if (!shouldCluster && markerLayerGroup) {
-              // Add marker layers
+            } else if (!isClustered && markerLayerGroup) {
+              // 非聚類模式：添加 individual markers
               markerLayerGroup.eachLayer(layer => {
                 surveyPointLayer.addLayer(layer);
               });
