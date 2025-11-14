@@ -184,7 +184,7 @@ export function initMapPopup({
             
             // Determine which layers to show based on zoom and point count
             const visiblePointCount = clusterManager.currentVisibleMarkers?.length || 0;
-            const shouldCluster = zoom < 14 || visiblePointCount >= 250;
+            const shouldCluster = zoom < 14 || visiblePointCount >= 400;
             
             if (shouldCluster && clusterLayerGroup) {
               // Add cluster layers

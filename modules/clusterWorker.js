@@ -51,6 +51,7 @@ self.onmessage = async (event) => {
           result: {
             clusters: result.clusters,
             visiblePoints: result.visiblePoints,
+            isClustered: result.isClustered,
             timestamp: Date.now(),
           },
         });
