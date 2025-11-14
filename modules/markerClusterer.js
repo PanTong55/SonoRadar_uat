@@ -147,7 +147,7 @@ class ClusterEngine {
   /**
    * 根據 zoom level 計算聚類半徑
    * zoom 越小 -> 半徑越大 -> 聚類越密集
-   * 在 zoom 14 時，如果可見點數 < 400，禁用聚類；>= 400 時啟用聚類
+   * 在 zoom 14 時，如果可見點數 < 300，禁用聚類；>= 300 時啟用聚類
    */
   getClusterRadiusForZoom(zoom, visiblePointCount = 0) {
     // zoom 16+: 完全不聚類
@@ -155,8 +155,8 @@ class ClusterEngine {
     
     // zoom 14-15: 根據可見點數決定是否聚類
     if (zoom >= 14) {
-      if (visiblePointCount < 400) return -1; // -1 表示禁用聚類
-      return 0.02; // >= 400 點時使用最小聚類
+      if (visiblePointCount < 300) return -1; // -1 表示禁用聚類
+      return 0.02; // >= 300 點時使用最小聚類
     }
     
     if (zoom >= 12) return 0.03;
