@@ -1,7 +1,7 @@
 // modules/fileLoader.js
 
 import { extractGuanoMetadata, parseGuanoMetadata } from './guanoReader.js';
-import { addFilesToList, getFileList, getCurrentIndex, setCurrentIndex, removeFilesByName, setFileMetadata, getTimeExpansionMode } from './fileState.js';
+import { addFilesToList, getFileList, getCurrentIndex, setCurrentIndex, removeFilesByName, setFileMetadata, getTimeExpansionMode, pruneOldFiles } from './fileState.js';
 import { showMessageBox } from './messageBox.js';
 
 export async function getWavSampleRate(file) {
@@ -203,6 +203,8 @@ export function initFileLoader({
       for (let i = 0; i < filteredList.length; i++) {
         setFileMetadata(startIdx + i, metaList[i]);
       }
+      // 如果列表超過限制，自動清理舊項目
+      pruneOldFiles(500);
     }
     hideUploadOverlay();
     if (filteredList.length > 0) {

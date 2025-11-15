@@ -190,6 +190,9 @@ if (timeExpBtn) {
   });
 }
 let stopBtnRafId = null;
+let lastScrollLeft = 0; // 防止重複滾動事件
+let markerUpdateScheduled = false; // 防止重複的 marker 更新
+
 function showStopButton() {
   if (stopBtnRafId !== null) {
     cancelAnimationFrame(stopBtnRafId);
@@ -201,6 +204,7 @@ function showStopButton() {
     stopBtn.classList.add('show');
   });
 }
+
 function hideStopButton() {
   if (stopBtnRafId !== null) {
     cancelAnimationFrame(stopBtnRafId);
@@ -214,6 +218,7 @@ function hideStopButton() {
     }
   }, { once: true });
 }
+
 playPauseBtn.disabled = true;
 hideStopButton();
 const getDuration = () => duration;
@@ -223,11 +228,11 @@ const metadataDiv = document.getElementById('Metadata');
 const fileListElem = document.getElementById('fileList');
 const metadataToggle = document.getElementById('metadata-toggle');
 metadataToggle.addEventListener('click', () => {
-const collapsed = metadataDiv.classList.toggle('collapsed');
-fileListElem.classList.toggle('metadata-collapsed', collapsed);
-metadataToggle.classList.toggle('fa-caret-down', !collapsed);
-metadataToggle.classList.toggle('fa-caret-up', collapsed);
-});
+  const collapsed = metadataDiv.classList.toggle('collapsed');
+  fileListElem.classList.toggle('metadata-collapsed', collapsed);
+  metadataToggle.classList.toggle('fa-caret-down', !collapsed);
+  metadataToggle.classList.toggle('fa-caret-up', collapsed);
+}, { once: false });
 
 initWavesurfer({
   container,
@@ -629,9 +634,17 @@ function updateProgressLine(time) {
 viewer.addEventListener('scroll', () => {
   const ws = getWavesurfer();
   if (!ws) return;
-  updateProgressLine(ws.getCurrentTime());
-  autoIdControl?.updateMarkers();
-});
+  
+  // 防止重複的 marker 更新（節流）
+  if (!markerUpdateScheduled) {
+    markerUpdateScheduled = true;
+    requestAnimationFrame(() => {
+      updateProgressLine(ws.getCurrentTime());
+      autoIdControl?.updateMarkers();
+      markerUpdateScheduled = false;
+    });
+  }
+}, { passive: true });
 
 progressLineElem.addEventListener('mousedown', (e) => {
   const ws = getWavesurfer();
@@ -662,6 +675,16 @@ viewer.addEventListener('expand-selection', async (e) => {
     const base = currentExpandBlob || getCurrentFile();
     const blob = await cropWavBlob(base, startTime, endTime);
     if (blob) {
+      // 限制 expandHistory 深度以防止無限增長（最多 50 層）
+      if (expandHistory.length >= 50) {
+        // 釋放最舊的 blob
+        const oldest = expandHistory.shift();
+        if (oldest.src && typeof oldest.src !== 'string' && oldest.src.arrayBuffer) {
+          // Blob 會被垃圾收集
+          oldest.src = null;
+        }
+      }
+      
       expandHistory.push({ src: base, freqMin: currentFreqMin, freqMax: currentFreqMax });
       await getWavesurfer().loadBlob(blob);
       currentExpandBlob = blob;
@@ -679,7 +702,7 @@ viewer.addEventListener('expand-selection', async (e) => {
       freqHoverControl?.refreshHover();
     }
   }
-});
+}, { once: false });
 
 viewer.addEventListener('fit-window-selection', async (e) => {
   const { startTime, endTime, Flow, Fhigh } = e.detail;
@@ -688,6 +711,12 @@ viewer.addEventListener('fit-window-selection', async (e) => {
     const base = currentExpandBlob || getCurrentFile();
     const blob = await cropWavBlob(base, startTime, endTime);
     if (blob) {
+      // 限制 expandHistory 深度以防止無限增長（最多 50 層）
+      if (expandHistory.length >= 50) {
+        const oldest = expandHistory.shift();
+        oldest.src = null; // 釋放舊 blob
+      }
+      
       expandHistory.push({ src: base, freqMin: currentFreqMin, freqMax: currentFreqMax });
       await getWavesurfer().loadBlob(blob);
       currentExpandBlob = blob;
@@ -704,7 +733,7 @@ viewer.addEventListener('fit-window-selection', async (e) => {
       updateSpectrogramSettingsText();
     }
   }
-});
+}, { once: false });
 
 initBrightnessControl({
 brightnessSliderId: 'brightnessSlider',
