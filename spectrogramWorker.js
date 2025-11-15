@@ -1,11 +1,5 @@
 let canvas, ctx, sampleRate = 44100;
 
-// 共享的緩衝池，避免每次都重新分配
-let cachedWindow = null;
-let cachedFftSize = 0;
-let cachedReal = null;
-let cachedImag = null;
-
 self.onmessage = (e) => {
   const { type } = e.data;
   if (type === 'init') {
@@ -24,31 +18,16 @@ function renderSpectrogram(signal, sr, fftSize, overlapPct) {
   const height = fftSize / 2;
   canvas.width = width;
   canvas.height = height;
-  
   const img = ctx.createImageData(width, height);
-  const window = getOrCreateWindow(fftSize);
-  
-  // 複用或創建 FFT 緩衝
-  let real = cachedReal;
-  let imag = cachedImag;
-  if (!real || real.length !== fftSize) {
-    real = new Float32Array(fftSize);
-    imag = new Float32Array(fftSize);
-    cachedReal = real;
-    cachedImag = imag;
-  }
-  
+  const window = hannWindow(fftSize);
+  const real = new Float32Array(fftSize);
+  const imag = new Float32Array(fftSize);
   for (let x = 0, i = 0; i + fftSize <= signal.length; i += hop, x++) {
-    // 應用窗口函數
     for (let j = 0; j < fftSize; j++) {
       real[j] = signal[i + j] * window[j];
       imag[j] = 0;
     }
-    
-    // FFT 計算
     fft(real, imag);
-    
-    // 填充 ImageData
     for (let y = 0; y < height; y++) {
       const mag = Math.sqrt(real[y] * real[y] + imag[y] * imag[y]);
       let val = Math.log10(mag + 1e-12);
@@ -61,25 +40,15 @@ function renderSpectrogram(signal, sr, fftSize, overlapPct) {
       img.data[idx * 4 + 3] = 255;
     }
   }
-  
   ctx.putImageData(img, 0, 0);
   self.postMessage({ type: 'rendered' });
 }
 
-/**
- * 創建或複用 Hann 窗口（避免重複分配）
- */
-function getOrCreateWindow(N) {
-  if (cachedWindow && cachedWindow.length === N) {
-    return cachedWindow;
-  }
-  
+function hannWindow(N) {
   const win = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
   }
-  cachedWindow = win;
-  cachedFftSize = N;
   return win;
 }
 

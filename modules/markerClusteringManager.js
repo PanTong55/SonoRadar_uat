@@ -230,7 +230,6 @@ export class MarkerClusteringManager {
   /**
    * 渲染 clusters 和 visible markers
    * 支援聚類模式和非聚類模式的平滑過渡
-   * 優化：避免重複建立相同的 marker，清理舊引用
    */
   renderClusters() {
     try {
@@ -244,26 +243,6 @@ export class MarkerClusteringManager {
       // 稍後清除並添加新 markers
       const fadeOutDuration = this.enableAnimation ? 150 : 0;
       setTimeout(() => {
-        // 清除舊 marker 事件監聽器，防止 memory leak
-        for (let marker of this.clusterMarkersMap.values()) {
-          try {
-            marker.off(); // 移除所有 Leaflet 事件
-            const el = marker.getElement();
-            if (el) {
-              el.onclick = null;
-              el.onmouseenter = null;
-              el.onmouseleave = null;
-            }
-          } catch (e) {}
-        }
-
-        for (let marker of this.visibleMarkersMap.values()) {
-          try {
-            marker.off(); // 移除所有 Leaflet 事件
-          } catch (e) {}
-        }
-
-        // 清除圖層和映射
         this.clusterLayerGroup.clearLayers();
         this.markerLayerGroup.clearLayers();
         this.clusterMarkersMap.clear();
@@ -600,60 +579,26 @@ export class MarkerClusteringManager {
    * 銷毀 manager（清理資源）
    */
   destroy() {
-    // 移除地圖事件監聽（防止 memory leak）
-    if (this.map) {
-      this.map.off('zoomstart');
-      this.map.off('zoomend');
-      this.map.off('moveend');
-    }
-
-    // 清除排程計時器
     if (this.zoomThrottleTimer) {
       clearTimeout(this.zoomThrottleTimer);
-      this.zoomThrottleTimer = null;
     }
-
-    // 清除圖層內容與引用
-    if (this.clusterLayerGroup) {
-      this.clusterLayerGroup.clearLayers();
-      if (this.map && this.map.hasLayer(this.clusterLayerGroup)) {
-        this.map.removeLayer(this.clusterLayerGroup);
-      }
-      this.clusterLayerGroup = null;
-    }
-
-    if (this.markerLayerGroup) {
-      this.markerLayerGroup.clearLayers();
-      if (this.map && this.map.hasLayer(this.markerLayerGroup)) {
-        this.map.removeLayer(this.markerLayerGroup);
-      }
-      this.markerLayerGroup = null;
-    }
-
-    // 清除 marker 引用（釋放 DOM 節點和 Leaflet marker 內存）
-    this.clusterMarkersMap.clear();
-    this.visibleMarkersMap.clear();
-    this.pinnedPointIds.clear();
-
-    // 終止 Worker 線程
     if (this.worker) {
       try {
         this.worker.terminate();
-        this.worker = null;
       } catch (e) {
         console.warn('[ClusterManager] Error terminating worker:', e);
       }
     }
-
-    // 清除所有狀態
-    this.allSurveyPoints = null;
-    this.currentClusters = null;
-    this.currentVisibleMarkers = null;
-    this.isWorkerReady = false;
-    this.computationInFlight = false;
-    this.pendingComputeRequest = null;
-
-    console.log('[ClusterManager] Destroyed & cleaned');
+    if (this.clusterLayerGroup) {
+      this.map.removeLayer(this.clusterLayerGroup);
+    }
+    if (this.markerLayerGroup) {
+      this.map.removeLayer(this.markerLayerGroup);
+    }
+    this.clusterMarkersMap.clear();
+    this.visibleMarkersMap.clear();
+    this.pinnedPointIds.clear();
+    console.log('[ClusterManager] Destroyed');
   }
 }
 

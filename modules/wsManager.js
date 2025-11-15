@@ -66,31 +66,15 @@ export function replacePlugin(
   if (!ws) throw new Error('Wavesurfer not initialized.');
   const container = document.getElementById("spectrogram-only");
 
-  // 徹底清理舊 canvas 及其相關資源
-  const oldCanvases = container.querySelectorAll("canvas");
-  oldCanvases.forEach(canvas => {
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      // 清除 canvas 上的繪製內容
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-    canvas.remove();
-  });
+  const oldCanvas = container.querySelector("canvas");
+  if (oldCanvas) oldCanvas.remove();
 
-  // 完全銷毀舊 plugin
-  if (plugin?.destroy) {
-    try {
-      plugin.destroy();
-    } catch (e) {
-      console.warn('⚠️ Error destroying old plugin:', e);
-    }
-  }
-  plugin = null;
+  if (plugin?.destroy) plugin.destroy();
 
   currentColorMap = colorMap;
+
   currentFftSize = fftSamples;
   currentWindowType = windowFunc;
-  
   const noverlap = overlapPercent !== null
     ? Math.floor(fftSamples * (overlapPercent / 100))
     : null;

@@ -70,60 +70,6 @@ export function clearFileList() {
   fileMetadata = {};
 }
 
-/**
- * 智能清理舊文件對象（當列表超過閾值時）
- * 釋放不再使用的元數據以減少 RAM 占用
- */
-export function pruneOldFiles(maxFiles = 500) {
-  if (fileList.length <= maxFiles) return;
-  
-  const toRemove = fileList.length - maxFiles;
-  const startIdx = Math.floor(toRemove / 2); // 從中間開始移除
-  
-  for (let i = startIdx; i < startIdx + toRemove; i++) {
-    if (fileIcons[i]) delete fileIcons[i];
-    if (fileNotes[i]) delete fileNotes[i];
-    if (fileMetadata[i]) delete fileMetadata[i];
-  }
-  
-  // 重新索引
-  const newList = fileList.slice();
-  fileList = newList;
-  
-  const newIcons = {};
-  const newNotes = {};
-  const newMeta = {};
-  
-  Object.keys(fileIcons).forEach(k => {
-    const idx = parseInt(k, 10);
-    if (idx >= startIdx + toRemove) {
-      newIcons[idx - toRemove] = fileIcons[k];
-    }
-  });
-  
-  Object.keys(fileNotes).forEach(k => {
-    const idx = parseInt(k, 10);
-    if (idx >= startIdx + toRemove) {
-      newNotes[idx - toRemove] = fileNotes[k];
-    }
-  });
-  
-  Object.keys(fileMetadata).forEach(k => {
-    const idx = parseInt(k, 10);
-    if (idx >= startIdx + toRemove) {
-      newMeta[idx - toRemove] = fileMetadata[k];
-    }
-  });
-  
-  fileIcons = newIcons;
-  fileNotes = newNotes;
-  fileMetadata = newMeta;
-  
-  if (currentIndex >= startIdx + toRemove) {
-    currentIndex -= toRemove;
-  }
-}
-
 export function setFileNote(index, note) {
   fileNotes[index] = note;
 }
