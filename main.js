@@ -555,45 +555,49 @@ updateSpectrogramSettingsText();
 
 const renderAxes = () => {
   containerWidth = container.clientWidth;
-  drawTimeAxis({
-    containerWidth,
-    duration,
-    zoomLevel: zoomControl.getZoomLevel(),
-    axisElement: timeAxis,
-    labelElement: timeLabel,
-    timeExpansion: getTimeExpansionMode(),
-  });
   
-drawFrequencyGrid({
-gridCanvas: freqGrid,
-labelContainer: freqAxisContainer,
-containerElement: container,
-spectrogramHeight,
-maxFrequency: currentFreqMax - currentFreqMin,
-offsetKHz: currentFreqMin,
-    timeExpansion: getTimeExpansionMode(),
-});
+  // 使用批量更新優化，避免多次重排。在單個 RAF 中同時更新時間軸和頻率網格
+  requestAnimationFrame(() => {
+    drawTimeAxis({
+      containerWidth,
+      duration,
+      zoomLevel: zoomControl.getZoomLevel(),
+      axisElement: timeAxis,
+      labelElement: timeLabel,
+      timeExpansion: getTimeExpansionMode(),
+    });
+    
+    drawFrequencyGrid({
+      gridCanvas: freqGrid,
+      labelContainer: freqAxisContainer,
+      containerElement: container,
+      spectrogramHeight,
+      maxFrequency: currentFreqMax - currentFreqMin,
+      offsetKHz: currentFreqMin,
+      timeExpansion: getTimeExpansionMode(),
+    });
 
-if (!freqHoverControl) {
-freqHoverControl = initFrequencyHover({
-viewerId: 'viewer-container',
-wrapperId: 'viewer-wrapper',
-hoverLineId: 'hover-line',
-hoverLineVId: 'hover-line-vertical',
-freqLabelId: 'hover-label',
-spectrogramHeight,
-    spectrogramWidth: containerWidth,
-maxFrequency: currentFreqMax,
-minFrequency: currentFreqMin,
-totalDuration: duration,
-getZoomLevel: () => zoomControl.getZoomLevel(),
-    getDuration: () => duration
+    if (!freqHoverControl) {
+      freqHoverControl = initFrequencyHover({
+        viewerId: 'viewer-container',
+        wrapperId: 'viewer-wrapper',
+        hoverLineId: 'hover-line',
+        hoverLineVId: 'hover-line-vertical',
+        freqLabelId: 'hover-label',
+        spectrogramHeight,
+        spectrogramWidth: containerWidth,
+        maxFrequency: currentFreqMax,
+        minFrequency: currentFreqMin,
+        totalDuration: duration,
+        getZoomLevel: () => zoomControl.getZoomLevel(),
+        getDuration: () => duration
+      });
+    } else {
+      freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
+      autoIdControl?.updateMarkers();
+    }
+    updateProgressLine(getWavesurfer().getCurrentTime());
   });
-  } else {
-    freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
-    autoIdControl?.updateMarkers();
-  }
-  updateProgressLine(getWavesurfer().getCurrentTime());
 };
 
 const wrapper = document.getElementById('viewer-wrapper');
