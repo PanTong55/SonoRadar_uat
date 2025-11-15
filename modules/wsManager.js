@@ -66,10 +66,26 @@ export function replacePlugin(
   if (!ws) throw new Error('Wavesurfer not initialized.');
   const container = document.getElementById("spectrogram-only");
 
+  // 徹底清理舊 canvas
   const oldCanvas = container.querySelector("canvas");
-  if (oldCanvas) oldCanvas.remove();
+  if (oldCanvas) {
+    // 清除 ImageData 和繪製資源
+    const ctx = oldCanvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, oldCanvas.width, oldCanvas.height);
+    }
+    // 重置 canvas 尺寸以釋放 WebGL/Canvas 記憶體
+    oldCanvas.width = 0;
+    oldCanvas.height = 0;
+    // 移除 DOM 元素
+    oldCanvas.remove();
+  }
 
-  if (plugin?.destroy) plugin.destroy();
+  // 完全銷毀舊 plugin 對象
+  if (plugin) {
+    if (plugin.destroy) plugin.destroy();
+    plugin = null; // ✅ 明確設為 null 讓 GC 回收
+  }
 
   currentColorMap = colorMap;
 
@@ -98,6 +114,9 @@ export function replacePlugin(
     });
   } catch (err) {
     console.warn('⚠️ Spectrogram render failed:', err);
+    // 清理失敗的 plugin
+    if (plugin?.destroy) plugin.destroy();
+    plugin = null;
   }
 }
 
@@ -119,6 +138,33 @@ export function getCurrentFftSize() {
 
 export function getCurrentWindowType() {
   return currentWindowType;
+}
+
+export function cleanupWavesurfer() {
+  // 完全清理 wavesurfer 和 plugin 資源
+  const container = document.getElementById("spectrogram-only");
+  if (container) {
+    const canvas = container.querySelector("canvas");
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      canvas.width = 0;
+      canvas.height = 0;
+      canvas.remove();
+    }
+  }
+
+  if (plugin) {
+    if (plugin.destroy) plugin.destroy();
+    plugin = null;
+  }
+
+  if (ws) {
+    if (ws.destroy) ws.destroy();
+    ws = null;
+  }
 }
 
 export function initScrollSync({
