@@ -550,48 +550,77 @@ updateSpectrogramSettingsText();
 }
 }
 
-const renderAxes = () => {
-  containerWidth = container.clientWidth;
-  drawTimeAxis({
-    containerWidth,
-    duration,
-    zoomLevel: zoomControl.getZoomLevel(),
-    axisElement: timeAxis,
-    labelElement: timeLabel,
-    timeExpansion: getTimeExpansionMode(),
-  });
+const renderAxes = (() => {
+  let lastContainerWidth = 0;
+  let lastDuration = 0;
+  let lastZoomLevel = 0;
+  let lastFreqMin = 0;
+  let lastFreqMax = 0;
   
-drawFrequencyGrid({
-gridCanvas: freqGrid,
-labelContainer: freqAxisContainer,
-containerElement: container,
-spectrogramHeight,
-maxFrequency: currentFreqMax - currentFreqMin,
-offsetKHz: currentFreqMin,
-    timeExpansion: getTimeExpansionMode(),
-});
+  return () => {
+    containerWidth = container.clientWidth;
+    const currentZoomLevel = zoomControl.getZoomLevel();
+    const currentDuration = duration;
+    
+    // 優化：只有參數變化時才重新渲染
+    const needsRedraw = 
+      lastContainerWidth !== containerWidth ||
+      lastDuration !== currentDuration ||
+      lastZoomLevel !== currentZoomLevel ||
+      lastFreqMin !== currentFreqMin ||
+      lastFreqMax !== currentFreqMax;
+    
+    if (!needsRedraw && freqHoverControl) {
+      return; // 沒有變化，跳過渲染
+    }
+    
+    lastContainerWidth = containerWidth;
+    lastDuration = currentDuration;
+    lastZoomLevel = currentZoomLevel;
+    lastFreqMin = currentFreqMin;
+    lastFreqMax = currentFreqMax;
+    
+    drawTimeAxis({
+      containerWidth,
+      duration,
+      zoomLevel: currentZoomLevel,
+      axisElement: timeAxis,
+      labelElement: timeLabel,
+      timeExpansion: getTimeExpansionMode(),
+    });
+    
+    drawFrequencyGrid({
+      gridCanvas: freqGrid,
+      labelContainer: freqAxisContainer,
+      containerElement: container,
+      spectrogramHeight,
+      maxFrequency: currentFreqMax - currentFreqMin,
+      offsetKHz: currentFreqMin,
+      timeExpansion: getTimeExpansionMode(),
+    });
 
-if (!freqHoverControl) {
-freqHoverControl = initFrequencyHover({
-viewerId: 'viewer-container',
-wrapperId: 'viewer-wrapper',
-hoverLineId: 'hover-line',
-hoverLineVId: 'hover-line-vertical',
-freqLabelId: 'hover-label',
-spectrogramHeight,
-    spectrogramWidth: containerWidth,
-maxFrequency: currentFreqMax,
-minFrequency: currentFreqMin,
-totalDuration: duration,
-getZoomLevel: () => zoomControl.getZoomLevel(),
-    getDuration: () => duration
-  });
-  } else {
-    freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
-    autoIdControl?.updateMarkers();
-  }
-  updateProgressLine(getWavesurfer().getCurrentTime());
-};
+    if (!freqHoverControl) {
+      freqHoverControl = initFrequencyHover({
+        viewerId: 'viewer-container',
+        wrapperId: 'viewer-wrapper',
+        hoverLineId: 'hover-line',
+        hoverLineVId: 'hover-line-vertical',
+        freqLabelId: 'hover-label',
+        spectrogramHeight,
+        spectrogramWidth: containerWidth,
+        maxFrequency: currentFreqMax,
+        minFrequency: currentFreqMin,
+        totalDuration: duration,
+        getZoomLevel: () => zoomControl.getZoomLevel(),
+        getDuration: () => duration
+      });
+    } else {
+      freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
+      autoIdControl?.updateMarkers();
+    }
+    updateProgressLine(getWavesurfer().getCurrentTime());
+  };
+})();
 
 const wrapper = document.getElementById('viewer-wrapper');
 const zoomControl = initZoomControls(
