@@ -66,10 +66,19 @@ export function replacePlugin(
   if (!ws) throw new Error('Wavesurfer not initialized.');
   const container = document.getElementById("spectrogram-only");
 
+  // ✅ 改進：完全清理舊 plugin 和 canvas
   const oldCanvas = container.querySelector("canvas");
-  if (oldCanvas) oldCanvas.remove();
+  if (oldCanvas) {
+    oldCanvas.remove();
+  }
 
-  if (plugin?.destroy) plugin.destroy();
+  if (plugin?.destroy) {
+    plugin.destroy();
+    plugin = null;  // ✅ 確保 plugin 引用被清空
+  }
+
+  // ✅ 強制重新設置 container 寬度為預設值（避免殘留的大尺寸）
+  container.style.width = '100%';
 
   currentColorMap = colorMap;
 

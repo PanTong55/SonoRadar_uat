@@ -374,22 +374,25 @@ zoomControlsElem.style.display = 'flex';
 sidebarControl.refresh(file.name);
 },
 onBeforeLoad: () => {
-if (demoFetchController) {
-  demoFetchController.abort();
-  demoFetchController = null;
-}
-if (uploadOverlay.style.display !== 'flex') {
-  loadingOverlay.style.display = 'flex';
-}
-freqHoverControl?.hideHover();
-freqHoverControl?.clearSelections();
-if (selectionExpandMode) {
-  selectionExpandMode = false;
-  sampleRateBtn.disabled = false;
-  expandHistory = [];
-  currentExpandBlob = null;
-  updateExpandBackBtn();
-}
+  if (demoFetchController) {
+    demoFetchController.abort();
+    demoFetchController = null;
+  }
+  if (uploadOverlay.style.display !== 'flex') {
+    loadingOverlay.style.display = 'flex';
+  }
+  // ✅ 在加載新文件前重置 container 寬度，避免先前 zoom 的殘留
+  container.style.width = '100%';
+  
+  freqHoverControl?.hideHover();
+  freqHoverControl?.clearSelections();
+  if (selectionExpandMode) {
+    selectionExpandMode = false;
+    sampleRateBtn.disabled = false;
+    expandHistory = [];
+    currentExpandBlob = null;
+    updateExpandBackBtn();
+  }
 },
   onAfterLoad: () => {
     if (uploadOverlay.style.display !== 'flex') {
@@ -666,7 +669,11 @@ viewer.addEventListener('expand-selection', async (e) => {
       await getWavesurfer().loadBlob(blob);
       currentExpandBlob = blob;
       selectionExpandMode = true;
-      zoomControl.setZoomLevel(0);
+      zoomControl.resetZoomState();  // ✅ 使用完整重置
+      
+      // ✅ 強制重置 container 寬度
+      container.style.width = '100%';
+      
       sampleRateBtn.disabled = true;
       renderAxes();
       freqHoverControl?.hideHover();
@@ -692,7 +699,11 @@ viewer.addEventListener('fit-window-selection', async (e) => {
       await getWavesurfer().loadBlob(blob);
       currentExpandBlob = blob;
       selectionExpandMode = true;
-      zoomControl.setZoomLevel(0);
+      zoomControl.resetZoomState();  // ✅ 使用完整重置
+      
+      // ✅ 強制重置 container 寬度
+      container.style.width = '100%';
+      
       sampleRateBtn.disabled = true;
       freqMinInput.value = formatFreqValue(Flow);
       freqMaxInput.value = formatFreqValue(Fhigh);
@@ -772,28 +783,35 @@ scrollTargetId: 'time-axis-wrapper',
 
 getWavesurfer().on('ready', () => {
     duration = getWavesurfer().getDuration();
-    zoomControl.setZoomLevel(0);
+    zoomControl.resetZoomState();  // ✅ 改用完整重置而非 setZoomLevel(0)
 
-  progressLineElem.style.display = 'none';
-  updateProgressLine(0);
+    // ✅ 重置 container 寬度回復初值，避免高 zoom 後的殘留
+    container.style.width = '100%';
 
-getPlugin()?.render();
-requestAnimationFrame(() => {
-renderAxes();
-freqHoverControl?.refreshHover();
-autoIdControl?.updateMarkers();
-    updateSpectrogramSettingsText();
-});
-});
+    progressLineElem.style.display = 'none';
+    updateProgressLine(0);
+
+    getPlugin()?.render();
+    requestAnimationFrame(() => {
+      renderAxes();
+      freqHoverControl?.refreshHover();
+      autoIdControl?.updateMarkers();
+      updateSpectrogramSettingsText();
+    });
+  });
 
 getWavesurfer().on('decode', () => {
-duration = getWavesurfer().getDuration();
-zoomControl.setZoomLevel(0);
-progressLineElem.style.display = 'none';
-updateProgressLine(0);
-renderAxes();
-freqHoverControl?.refreshHover();
-autoIdControl?.updateMarkers();
+  duration = getWavesurfer().getDuration();
+  zoomControl.resetZoomState();  // ✅ 改用完整重置而非 setZoomLevel(0)
+  
+  // ✅ 重置 container 寬度回復初值
+  container.style.width = '100%';
+  
+  progressLineElem.style.display = 'none';
+  updateProgressLine(0);
+  renderAxes();
+  freqHoverControl?.refreshHover();
+  autoIdControl?.updateMarkers();
   updateSpectrogramSettingsText();
 });
 

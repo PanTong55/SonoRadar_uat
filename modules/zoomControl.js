@@ -115,10 +115,18 @@ export function initZoomControls(ws, container, duration, applyZoomCallback,
     }
   });  
 
+  // ✅ 新增：完整重置 zoom 狀態，不受先前狀態影響
+  function resetZoomState() {
+    computeMinZoomLevel();
+    zoomLevel = minZoomLevel;
+    applyZoom();
+  }
+
   return {
     applyZoom,
     updateZoomButtons,
     getZoomLevel: () => zoomLevel,
     setZoomLevel,
+    resetZoomState,  // ✅ 暴露重置方法
   };
 }
