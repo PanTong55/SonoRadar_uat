@@ -783,10 +783,13 @@ scrollTargetId: 'time-axis-wrapper',
 
 getWavesurfer().on('ready', () => {
     duration = getWavesurfer().getDuration();
-    zoomControl.resetZoomState();  // ✅ 改用完整重置而非 setZoomLevel(0)
-
-    // ✅ 重置 container 寬度回復初值，避免高 zoom 後的殘留
+    
+    // ✅ 強制重置所有寬度，確保不受先前 zoom 影響
     container.style.width = '100%';
+    wrapper.style.width = '100%';
+    
+    // ✅ 調用完整 reset，會基於 100% 寬度計算 minZoomLevel
+    zoomControl.resetZoomState();
 
     progressLineElem.style.display = 'none';
     updateProgressLine(0);
@@ -802,10 +805,13 @@ getWavesurfer().on('ready', () => {
 
 getWavesurfer().on('decode', () => {
   duration = getWavesurfer().getDuration();
-  zoomControl.resetZoomState();  // ✅ 改用完整重置而非 setZoomLevel(0)
   
-  // ✅ 重置 container 寬度回復初值
+  // ✅ 強制重置所有寬度，確保不受先前 zoom 影響
   container.style.width = '100%';
+  wrapper.style.width = '100%';
+  
+  // ✅ 調用完整 reset，會基於 100% 寬度計算 minZoomLevel
+  zoomControl.resetZoomState();
   
   progressLineElem.style.display = 'none';
   updateProgressLine(0);
