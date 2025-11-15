@@ -1,6 +1,5 @@
 // modules/axisRenderer.js
 
-// 優化：使用 DocumentFragment 和批量 DOM 操作
 export function drawTimeAxis({
   containerWidth,
   duration,
@@ -12,33 +11,42 @@ export function drawTimeAxis({
   const pxPerSec = zoomLevel;
   const totalWidth = duration * pxPerSec;
 
+  // step selection unchanged (ticks positions unchanged). We alter only how
+  // numeric labels are displayed when timeExpansion is active (numbers shrink by 10x).
   let step = 1000;
   if (pxPerSec >= 800) step = 100;
   else if (pxPerSec >= 500) step = 200;
   else if (pxPerSec >= 300) step = 500;
 
-  // 優化：使用 StringBuilder 模式
-  const htmlParts = [];
-  const baseLabelStr = step >= 1000 ? 's' : 'ms';
-  
+  const html = [];
   for (let t = 0; t < duration * 1000; t += step) {
     const left = (t / 1000) * pxPerSec;
 
-    htmlParts.push(`<div class="time-major-tick" style="left:${left}px"></div>`);
+    // 主刻度線
+    html.push(`
+      <div class="time-major-tick" style="left:${left}px"></div>
+    `);
 
+    // 副刻度線 (在主刻度與下一個主刻度之間的中間位置)
     const midLeft = left + (step / 1000 / 2) * pxPerSec;
     if (midLeft <= totalWidth) {
-      htmlParts.push(`<div class="time-minor-tick" style="left:${midLeft}px"></div>`);
+      html.push(`
+        <div class="time-minor-tick" style="left:${midLeft}px"></div>
+      `);
     }
 
+    // 置中數字 — 顯示值在 timeExpansion 時縮小 10 倍（數字顯示變為原來的 0.1x）
     const baseLabel = step >= 1000 ? (t / 1000) : t;
     const displayLabel = timeExpansion ? (baseLabel / 10) : baseLabel;
-    const extraClass = Number(displayLabel) === 0 ? ' zero-label' : '';
-    htmlParts.push(`<span class="time-axis-label${extraClass}" style="left:${left}px">${displayLabel}</span>`);
+    const labelStr = (step >= 1000 && !timeExpansion) ? `${baseLabel}` : `${displayLabel}`;
+    const isZero = Number(displayLabel) === 0;
+    const extraClass = isZero ? ' zero-label' : '';
+    html.push(`
+      <span class="time-axis-label${extraClass}" style="left:${left}px">${labelStr}</span>
+    `);
   }
 
-  // 一次性設置 innerHTML
-  axisElement.innerHTML = htmlParts.join('');
+  axisElement.innerHTML = html.join('');
   axisElement.style.width = `${totalWidth}px`;
   labelElement.textContent = step >= 1000 ? 'Time (s)' : 'Time (ms)';
 }
@@ -63,11 +71,14 @@ export function drawFrequencyGrid({
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
   ctx.lineWidth = 0.4;
 
+  // Decide internal step sizes. When timeExpansion is active the displayed
+  // frequency values are multiplied by 10, but we want the displayed major
+  // ticks to be every 10 kHz and minor ticks every 5 kHz. Since display =
+  // internal * 10, internal steps should be 1 kHz (major) and 0.5 kHz (minor).
   const range = maxFrequency;
   const majorStep = timeExpansion ? 1 : 10;
   const minorStep = timeExpansion ? 0.5 : 5;
 
-  // 優化：繪製所有主刻度線
   for (let f = 0; f <= range; f += majorStep) {
     const y = (1 - f / range) * spectrogramHeight;
     ctx.beginPath();
@@ -76,8 +87,7 @@ export function drawFrequencyGrid({
     ctx.stroke();
   }
 
-  // 優化：使用 DocumentFragment 批量操作 DOM
-  const fragment = document.createDocumentFragment();
+  labelContainer.innerHTML = '';
 
   for (let f = 0; f <= range; f += majorStep) {
     const y = Math.round((1 - f / range) * spectrogramHeight);
@@ -86,20 +96,21 @@ export function drawFrequencyGrid({
     const tick = document.createElement('div');
     tick.className = 'freq-major-tick';
     tick.style.top = `${y}px`;
-    fragment.appendChild(tick);
+    labelContainer.appendChild(tick);
 
-    // 文字標籤
+    // 文字
     const label = document.createElement('div');
     label.className = 'freq-label-static freq-axis-label';
     label.style.top = `${y - 1}px`;
     const freqValue = f + offsetKHz;
     const displayValue = timeExpansion ? (freqValue * 10) : freqValue;
     label.textContent = Number(displayValue.toFixed(1)).toString();
-    fragment.appendChild(label);
+    labelContainer.appendChild(label);
   }
 
-  // 優化：次刻度線也使用 fragment
+  // 新增次刻度 (minor tick)
   for (let f = 0; f <= range; f += minorStep) {
+    // skip positions that are effectively on major tick multiples (tolerance for floats)
     if (Math.abs((f / majorStep) - Math.round(f / majorStep)) < 1e-6) continue;
 
     const y = Math.round((1 - f / range) * spectrogramHeight);
@@ -107,10 +118,6 @@ export function drawFrequencyGrid({
     const minorTick = document.createElement('div');
     minorTick.className = 'freq-minor-tick';
     minorTick.style.top = `${y}px`;
-    fragment.appendChild(minorTick);
+    labelContainer.appendChild(minorTick);
   }
-
-  // 一次性添加到 DOM
-  labelContainer.innerHTML = '';
-  labelContainer.appendChild(fragment);
 }

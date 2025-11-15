@@ -92,19 +92,10 @@ export function replacePlugin(
   ws.registerPlugin(plugin);
 
   try {
-    // 優化：使用 requestIdleCallback 推遲高優先級渲染，避免阻塞主線程
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(() => {
-        plugin.render();
-        if (typeof onRendered === 'function') onRendered();
-      }, { timeout: 100 });
-    } else {
-      // 回退：使用 requestAnimationFrame
-      plugin.render();
-      requestAnimationFrame(() => {
-        if (typeof onRendered === 'function') onRendered();
-      });
-    }
+    plugin.render();
+    requestAnimationFrame(() => {
+      if (typeof onRendered === 'function') onRendered();
+    });
   } catch (err) {
     console.warn('⚠️ Spectrogram render failed:', err);
   }
