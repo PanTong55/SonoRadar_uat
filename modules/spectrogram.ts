@@ -150,6 +150,14 @@ function FFT(bufferSize: number, sampleRate: number, windowFunc: string, alpha: 
       )
     }
 
+    // Optimize window application
+    const windowValues = this.windowValues
+    for (var i = 0; i < bufferSize; i++) {
+      const idx = reverseTable[i]
+      real[i] = buffer[idx] * windowValues[idx]
+      imag[i] = 0
+    }
+
     var halfSize = 1,
       phaseShiftStepReal,
       phaseShiftStepImag,
@@ -159,11 +167,6 @@ function FFT(bufferSize: number, sampleRate: number, windowFunc: string, alpha: 
       tr,
       ti,
       tmpReal
-
-    for (var i = 0; i < bufferSize; i++) {
-      real[i] = buffer[reverseTable[i]] * this.windowValues[reverseTable[i]]
-      imag[i] = 0
-    }
 
     while (halfSize < bufferSize) {
       phaseShiftStepReal = cosTable[halfSize]
@@ -196,16 +199,12 @@ function FFT(bufferSize: number, sampleRate: number, windowFunc: string, alpha: 
       halfSize = halfSize << 1
     }
 
-    for (var i = 0, N = bufferSize / 2; i < N; i++) {
+    // Calculate magnitude spectrum without peak tracking (can be added back if needed)
+    const halfBufferSize = bufferSize / 2
+    for (var i = 0; i < halfBufferSize; i++) {
       rval = real[i]
       ival = imag[i]
-      mag = bSi * sqrt(rval * rval + ival * ival)
-
-      if (mag > this.peak) {
-        this.peakBand = i
-        this.peak = mag
-      }
-      spectrum[i] = mag
+      spectrum[i] = bSi * sqrt(rval * rval + ival * ival)
     }
     return spectrum
   }
@@ -797,15 +796,30 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       const pixels = this.resample(frequenciesData[c])
       const bitmapHeight = pixels[0].length
       const imageData = new ImageData(width, bitmapHeight)
+      const data = imageData.data
 
+      // Pre-cache colorMap values to avoid repeated array lookups
+      const colorCache = new Uint8ClampedArray(256 * 4)
+      for (let i = 0; i < 256; i++) {
+        const color = this.colorMap[i]
+        const idx = i * 4
+        colorCache[idx] = Math.round(color[0] * 255)
+        colorCache[idx + 1] = Math.round(color[1] * 255)
+        colorCache[idx + 2] = Math.round(color[2] * 255)
+        colorCache[idx + 3] = Math.round(color[3] * 255)
+      }
+
+      // Efficiently fill ImageData using cached colors
       for (let i = 0; i < pixels.length; i++) {
         for (let j = 0; j < pixels[i].length; j++) {
-          const colorMap = this.colorMap[pixels[i][j]]
-          const redIndex = ((bitmapHeight - j - 1) * width + i) * 4
-          imageData.data[redIndex] = colorMap[0] * 255
-          imageData.data[redIndex + 1] = colorMap[1] * 255
-          imageData.data[redIndex + 2] = colorMap[2] * 255
-          imageData.data[redIndex + 3] = colorMap[3] * 255
+          const pixelValue = pixels[i][j]
+          const colorIdx = pixelValue * 4
+          const dataIdx = ((bitmapHeight - j - 1) * width + i) * 4
+          
+          data[dataIdx] = colorCache[colorIdx]
+          data[dataIdx + 1] = colorCache[colorIdx + 1]
+          data[dataIdx + 2] = colorCache[colorIdx + 2]
+          data[dataIdx + 3] = colorCache[colorIdx + 3]
         }
       }
 
@@ -853,17 +867,28 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   ): number[][] {
     const filterMin = hzToScale(0)
     const filterMax = hzToScale(sampleRate / 2)
-    const filterBank = Array.from({ length: numFilters }, () => Array(this.fftSamples / 2 + 1).fill(0))
     const scale = sampleRate / this.fftSamples
+    const fftSamplesHalf = this.fftSamples / 2
+    const range = filterMax - filterMin
+    const reciprocalNumFilters = 1 / numFilters
+    
+    const filterBank: number[][] = []
+    
     for (let i = 0; i < numFilters; i++) {
-      let hz = scaleToHz(filterMin + (i / numFilters) * (filterMax - filterMin))
+      const filter = new Array(fftSamplesHalf + 1).fill(0)
+      
+      let hz = scaleToHz(filterMin + i * reciprocalNumFilters * range)
       let j = Math.floor(hz / scale)
       let hzLow = j * scale
       let hzHigh = (j + 1) * scale
       let r = (hz - hzLow) / (hzHigh - hzLow)
-      filterBank[i][j] = 1 - r
-      filterBank[i][j + 1] = r
+      
+      filter[j] = 1 - r
+      filter[j + 1] = r
+      
+      filterBank[i] = filter
     }
+    
     return filterBank
   }
 
@@ -1014,6 +1039,13 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         break
     }
 
+    // Pre-calculate constants for dB conversion
+    const fftSamplesHalf = fftSamples / 2
+    const gainDBNeg = -this.gainDB
+    const gainDBNegRange = gainDBNeg - this.rangeDB
+    const rangeDBReciprocal = 255 / this.rangeDB
+    const rangeOffset = 256
+
     for (let c = 0; c < channels; c++) {
       // for each channel
       const channelData = buffer.getChannelData(c)
@@ -1022,21 +1054,21 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
       while (currentOffset + fftSamples < channelData.length) {
         const segment = channelData.slice(currentOffset, currentOffset + fftSamples)
-        const array = new Uint8Array(fftSamples / 2)
+        const array = new Uint8Array(fftSamplesHalf)
         let spectrum = fft.calculateSpectrum(segment)
         if (filterBank) {
           spectrum = this.applyFilterBank(spectrum, filterBank)
         }
-        for (let j = 0; j < fftSamples / 2; j++) {
+        for (let j = 0; j < fftSamplesHalf; j++) {
           // Based on: https://manual.audacityteam.org/man/spectrogram_view.html
           const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
           const valueDB = 20 * Math.log10(magnitude)
-          if (valueDB < -this.gainDB - this.rangeDB) {
+          if (valueDB < gainDBNegRange) {
             array[j] = 0
-          } else if (valueDB > -this.gainDB) {
+          } else if (valueDB > gainDBNeg) {
             array[j] = 255
           } else {
-            array[j] = ((valueDB + this.gainDB) / this.rangeDB) * 255 + 256
+            array[j] = (valueDB + this.gainDB) * rangeDBReciprocal + rangeOffset
           }
         }
         channelFreq.push(array)
@@ -1089,8 +1121,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     const bgWidth = 55
     const getMaxY = frequenciesHeight || 512
     const labelIndex = 5 * (getMaxY / 256)
-    const freqStart = this.frequencyMin
-    const step = (this.frequencyMax - freqStart) / labelIndex
 
     // prepare canvas element for labels
     const ctx = this.labelsEl.getContext('2d')
@@ -1103,79 +1133,83 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       return
     }
 
+    // Pre-calculate font strings
+    const fontFreq = fontSizeFreq + ' ' + fontType
+    const fontUnit = fontSizeUnit + ' ' + fontType
+    const reciprocalLabelIndex = 1 / labelIndex
+    const yOffsetBase = c => (1 + c) * getMaxY
+
     for (let c = 0; c < channels; c++) {
       // for each channel
       // fill background
       ctx.fillStyle = bgFill
       ctx.fillRect(0, c * getMaxY, bgWidth, (1 + c) * getMaxY)
       ctx.fill()
-      let i
 
       // render labels
-      for (i = 0; i <= labelIndex; i++) {
-        ctx.textAlign = textAlign
-        ctx.textBaseline = 'middle'
+      ctx.textAlign = textAlign
+      ctx.textBaseline = 'middle'
 
+      for (let i = 0; i <= labelIndex; i++) {
         const freq = this.getLabelFrequency(i, labelIndex)
         const label = this.freqType(freq)
         const units = this.unitType(freq)
         const x = 16
-        let y = (1 + c) * getMaxY - (i / labelIndex) * getMaxY
+        let y = yOffsetBase(c) - (i * reciprocalLabelIndex) * getMaxY
 
         // Make sure label remains in view
         y = Math.min(Math.max(y, c * getMaxY + 10), (1 + c) * getMaxY - 10)
 
         // unit label
         ctx.fillStyle = textColorUnit
-        ctx.font = fontSizeUnit + ' ' + fontType
+        ctx.font = fontUnit
         ctx.fillText(units, x + 24, y)
         // freq label
         ctx.fillStyle = textColorFreq
-        ctx.font = fontSizeFreq + ' ' + fontType
+        ctx.font = fontFreq
         ctx.fillText(label, x, y)
       }
     }
   }
 
-  private resample(oldMatrix) {
+  private resample(oldMatrix: Uint8Array[]): Uint8Array[][] {
     const columnsNumber = this.getWidth()
-    const newMatrix = []
+    const newMatrix: Uint8Array[][] = []
+    const oldMatrixLength = oldMatrix.length
+    const freqSize = oldMatrix[0].length
 
-    const oldPiece = 1 / oldMatrix.length
+    const oldPiece = 1 / oldMatrixLength
     const newPiece = 1 / columnsNumber
-    let i
 
-    for (i = 0; i < columnsNumber; i++) {
-      const column = new Array(oldMatrix[0].length)
-      let j
+    // Pre-allocate arrays
+    const columnBuffer = new Float32Array(freqSize)
 
-      for (j = 0; j < oldMatrix.length; j++) {
+    for (let i = 0; i < columnsNumber; i++) {
+      // Reset buffer for this column
+      columnBuffer.fill(0)
+
+      const newStart = i * newPiece
+      const newEnd = newStart + newPiece
+
+      for (let j = 0; j < oldMatrixLength; j++) {
         const oldStart = j * oldPiece
         const oldEnd = oldStart + oldPiece
-        const newStart = i * newPiece
-        const newEnd = newStart + newPiece
         const overlap = Math.max(0, Math.min(oldEnd, newEnd) - Math.max(oldStart, newStart))
 
-        let k
-        /* eslint-disable max-depth */
         if (overlap > 0) {
-          for (k = 0; k < oldMatrix[0].length; k++) {
-            if (column[k] == null) {
-              column[k] = 0
-            }
-            column[k] += (overlap / newPiece) * oldMatrix[j][k]
+          const weight = overlap / newPiece
+          const oldData = oldMatrix[j]
+          for (let k = 0; k < freqSize; k++) {
+            columnBuffer[k] += weight * oldData[k]
           }
         }
-        /* eslint-enable max-depth */
       }
 
-      const intColumn = new Uint8Array(oldMatrix[0].length)
-      let m
-
-      for (m = 0; m < oldMatrix[0].length; m++) {
-        intColumn[m] = column[m]
+      // Convert to Uint8Array
+      const intColumn = new Uint8Array(freqSize)
+      for (let m = 0; m < freqSize; m++) {
+        intColumn[m] = columnBuffer[m]
       }
-
       newMatrix.push(intColumn)
     }
 

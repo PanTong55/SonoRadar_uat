@@ -1,7 +1,7 @@
 // modules/wsManager.js
 
 import WaveSurfer from './wavesurfer.esm.js';
-import Spectrogram from './spectrogram.esm.js';
+import Spectrogram from './spectrogram.ts';
 
 let ws = null;
 let plugin = null;
