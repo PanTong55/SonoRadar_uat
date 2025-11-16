@@ -88,8 +88,8 @@ async function reloadCurrentSpectrogram() {
     const overlapEl = document.getElementById('overlapInput');
     const overlap = overlapEl && overlapEl.value ? parseInt(overlapEl.value) : null;
 
-    // 重新渲染頻譜圖
-    wsManager.replacePlugin(colorMap, 800, frequencyMin, frequencyMax, overlap, null, fftSize, windowType);
+    // 重新渲染頻譜圖，等待 render 完成或超時
+    await wsManager.replacePlugin(colorMap, 800, frequencyMin, frequencyMax, overlap, null, fftSize, windowType);
 
     const mode = isFlashModeActive ? '⚡ Flash Mode (Optimized)' : '📊 Standard Mode';
     console.log(`✨ ${mode} - Spectrogram updated`);
