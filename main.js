@@ -24,6 +24,7 @@ import { initDropdown } from './modules/dropdown.js';
 import { showMessageBox } from './modules/messageBox.js';
 import { initAutoIdPanel } from './modules/autoIdPanel.js';
 import { initFreqContextMenu } from './modules/freqContextMenu.js';
+import { initFlashMode } from './modules/flashMode.js';
 import { getCurrentIndex, getFileList, toggleFileIcon, setFileList, clearFileList, getFileIconState, getFileNote, setFileNote, getFileMetadata, setFileMetadata, clearTrashFiles, getTrashFileCount, getCurrentFile, getTimeExpansionMode, setTimeExpansionMode, toggleTimeExpansionMode } from './modules/fileState.js';
 
 const spectrogramHeight = 800;
@@ -425,6 +426,7 @@ sidebarElem.addEventListener('sidebar-toggle', () => {
   }, 310);
 });
 const tagControl = initTagControl();
+initFlashMode();
 
 (async () => {
   demoFetchController = new AbortController();

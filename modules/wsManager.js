@@ -1,13 +1,15 @@
 // modules/wsManager.js
 
 import WaveSurfer from './wavesurfer.esm.js';
-import Spectrogram from './spectrogram-optimized.esm.js';
+import SpectrogramDefault from './spectrogram.esm.js';
+import SpectrogramOptimized from './spectrogram-optimized.esm.js';
 
 let ws = null;
 let plugin = null;
 let currentColorMap = null;
 let currentFftSize = 1024;
 let currentWindowType = 'hann';
+let currentSpectrogram = SpectrogramOptimized; // 默認使用優化版本
 
 export function initWavesurfer({
   container,
@@ -24,6 +26,10 @@ export function initWavesurfer({
   });
 
   return ws;
+}
+
+export function setSpectrogramModule(useOptimized = false) {
+  currentSpectrogram = useOptimized ? SpectrogramOptimized : SpectrogramDefault;
 }
 
 export function createSpectrogramPlugin({
@@ -50,7 +56,7 @@ export function createSpectrogramPlugin({
     baseOptions.noverlap = noverlap;
   }
 
-  return Spectrogram.create(baseOptions);
+  return currentSpectrogram.create(baseOptions);
 }
 
 export function replacePlugin(
