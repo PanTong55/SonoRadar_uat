@@ -24,7 +24,6 @@ import { initDropdown } from './modules/dropdown.js';
 import { showMessageBox } from './modules/messageBox.js';
 import { initAutoIdPanel } from './modules/autoIdPanel.js';
 import { initFreqContextMenu } from './modules/freqContextMenu.js';
-import { initFlashMode } from './modules/flashMode.js';
 import { getCurrentIndex, getFileList, toggleFileIcon, setFileList, clearFileList, getFileIconState, getFileNote, setFileNote, getFileMetadata, setFileMetadata, clearTrashFiles, getTrashFileCount, getCurrentFile, getTimeExpansionMode, setTimeExpansionMode, toggleTimeExpansionMode } from './modules/fileState.js';
 
 const spectrogramHeight = 800;
@@ -57,6 +56,7 @@ let currentFftSize = 1024;
 let currentWindowType = 'hann';
 let currentOverlap = 'auto';
 let currentAudioBufferLength = 0;
+let savedAudioBufferLengthBeforeExpand = null;
 let overlapWarningShown = false;
 let freqHoverControl = null;
 let autoIdControl = null;
@@ -183,6 +183,10 @@ if (timeExpBtn) {
             autoIdControl?.updateMarkers();
             updateSpectrogramSettingsText();
           }
+          ,
+          currentFftSize,
+          currentWindowType,
+          shouldUseFlashForReplace(),
         );
       }
     } catch (err) {
@@ -393,6 +397,11 @@ onBeforeLoad: () => {
     expandHistory = [];
     currentExpandBlob = null;
     updateExpandBackBtn();
+    // restore original audio length if we saved it
+    if (savedAudioBufferLengthBeforeExpand !== null) {
+      currentAudioBufferLength = savedAudioBufferLengthBeforeExpand;
+      savedAudioBufferLengthBeforeExpand = null;
+    }
   }
 },
   onAfterLoad: () => {
@@ -426,7 +435,6 @@ sidebarElem.addEventListener('sidebar-toggle', () => {
   }, 310);
 });
 const tagControl = initTagControl();
-initFlashMode();
 
 (async () => {
   demoFetchController = new AbortController();
@@ -515,21 +523,24 @@ await fileLoaderControl.loadFileAtIndex(idx);
 }
 }
 freqHoverControl?.hideHover();
-replacePlugin(
-getCurrentColorMap(),
-spectrogramHeight,
-currentFreqMin,
-currentFreqMax,
-getOverlapPercent(),
-() => {
+  replacePlugin(
+    getCurrentColorMap(),
+    spectrogramHeight,
+    currentFreqMin,
+    currentFreqMax,
+    getOverlapPercent(),
+    () => {
 duration = getWavesurfer().getDuration();
     zoomControl.applyZoom();
     renderAxes();
     freqHoverControl?.refreshHover();
     autoIdControl?.updateMarkers();
     updateSpectrogramSettingsText();
-  }
-);
+    },
+    currentFftSize,
+    currentWindowType,
+    shouldUseFlashForReplace(),
+  );
 }
 
 async function handleSampleRate(rate) {
@@ -672,12 +683,20 @@ viewer.addEventListener('expand-selection', async (e) => {
     const blob = await cropWavBlob(base, startTime, endTime);
     if (blob) {
       expandHistory.push({ src: base, freqMin: currentFreqMin, freqMax: currentFreqMax });
-      await getWavesurfer().loadBlob(blob);
-      currentExpandBlob = blob;
+      // Save original audio length so we can restore when leaving expansion
+      savedAudioBufferLengthBeforeExpand = currentAudioBufferLength;
+      // Set selectionExpandMode true BEFORE loadBlob so decode handler sees it
       selectionExpandMode = true;
-      zoomControl.resetZoomState();  // ✅ 使用完整重置
-      
-      // ✅ 強制重置 container 寬度
+      try {
+        await getWavesurfer().loadBlob(blob);
+      } catch (err) {
+        // if load fails, revert selectionExpandMode and rethrow
+        selectionExpandMode = false;
+        savedAudioBufferLengthBeforeExpand = null;
+        throw err;
+      }
+      currentExpandBlob = blob;
+      zoomControl.resetZoomState();
       container.style.width = '100%';
       
       sampleRateBtn.disabled = true;
@@ -686,8 +705,6 @@ viewer.addEventListener('expand-selection', async (e) => {
       freqHoverControl?.clearSelections();
       updateExpandBackBtn();
       autoIdControl?.reset();
-      updateSpectrogramSettingsText();
-      // 強制解除 suppressHover/isOverBtnGroup 狀態
       viewer.dispatchEvent(new CustomEvent('force-hover-enable'));
       freqHoverControl?.refreshHover();
     }
@@ -702,9 +719,16 @@ viewer.addEventListener('fit-window-selection', async (e) => {
     const blob = await cropWavBlob(base, startTime, endTime);
     if (blob) {
       expandHistory.push({ src: base, freqMin: currentFreqMin, freqMax: currentFreqMax });
-      await getWavesurfer().loadBlob(blob);
-      currentExpandBlob = blob;
+      // Ensure selectionExpandMode is set before decoding so getAutoOverlapPercent() can use backend buffer
       selectionExpandMode = true;
+      try {
+        await getWavesurfer().loadBlob(blob);
+      } catch (err) {
+        selectionExpandMode = false;
+        savedAudioBufferLengthBeforeExpand = null;
+        throw err;
+      }
+      currentExpandBlob = blob;
       zoomControl.resetZoomState();  // ✅ 使用完整重置
       
       // ✅ 強制重置 container 寬度
@@ -718,7 +742,8 @@ viewer.addEventListener('fit-window-selection', async (e) => {
       freqHoverControl?.clearSelections();
       updateExpandBackBtn();
       autoIdControl?.reset();
-      updateSpectrogramSettingsText();
+      // ✅ 移除此處的 updateSpectrogramSettingsText()，讓 decode 事件處理器負責
+      // updateSpectrogramSettingsText();
     }
   }
 });
@@ -733,21 +758,24 @@ contrastValId: 'contrastVal',
 resetBtnId: 'resetButton',
 onColorMapUpdated: (colorMap) => {
 freqHoverControl?.hideHover();        
-replacePlugin(
-colorMap,
-spectrogramHeight,
-currentFreqMin,
-currentFreqMax,
-getOverlapPercent(),
-() => {
+    replacePlugin(
+      colorMap,
+      spectrogramHeight,
+      currentFreqMin,
+      currentFreqMax,
+      getOverlapPercent(),
+      () => {
 duration = getWavesurfer().getDuration();
     zoomControl.applyZoom();
     renderAxes();
   freqHoverControl?.refreshHover();
   autoIdControl?.updateMarkers();
   updateSpectrogramSettingsText();
-  }
-  );
+      },
+      currentFftSize,
+      currentWindowType,
+      shouldUseFlashForReplace(),
+    );
   drawColorBar(colorMap);
   },
 });
@@ -811,6 +839,15 @@ getWavesurfer().on('ready', () => {
 
 getWavesurfer().on('decode', () => {
   duration = getWavesurfer().getDuration();
+  
+  // ✅ 在 selection expansion mode 時，從 wavesurfer backend 獲取新的 buffer 長度
+  if (selectionExpandMode) {
+    // Try to get decoded data length from wavesurfer; fallback to backend buffer
+    const newBufferLength = getWavesurfer()?.getDecodedData()?.length || getWavesurfer()?.backend?.buffer?.length;
+    if (newBufferLength) {
+      currentAudioBufferLength = newBufferLength;
+    }
+  }
   
   // ✅ 強制重置所有寬度，確保不受先前 zoom 影響
   container.style.width = '100%';
@@ -950,7 +987,7 @@ function updateSpectrogramSettingsText() {
   const fftSize = currentFftSize;
   const overlap = currentOverlap === 'auto'
     ? getAutoOverlapPercent()
-    : getOverlapPercent();
+    : getPluginUsedOverlapPercentFromManual(currentOverlap);
   const windowType = currentWindowType.charAt(0).toUpperCase() + currentWindowType.slice(1);
 
   const overlapText = currentOverlap === 'auto'
@@ -982,8 +1019,40 @@ function getOverlapPercent() {
   return isNaN(parsed) ? null : parsed;
 }
 
-function getAutoOverlapPercent() {
-  const bufferLength = currentAudioBufferLength || getWavesurfer()?.backend?.buffer?.length;
+/**
+ * Convert a user-specified overlap percent to the percent that the plugin
+ * will actually use (plugin computes noverlap = floor(fft * pct / 100)).
+ */
+function getPluginUsedOverlapPercentFromManual(pct) {
+  const parsed = parseInt(pct, 10);
+  if (isNaN(parsed)) return null;
+  const fft = currentFftSize;
+  if (!fft) return null;
+  const noverlap = Math.floor(fft * (parsed / 100));
+  return Math.round((noverlap / fft) * 100);
+}
+
+function shouldUseFlashForReplace() {
+  const manual = getOverlapPercent();
+  if (manual !== null) {
+    const pluginPct = getPluginUsedOverlapPercentFromManual(manual);
+    return pluginPct !== null && pluginPct <= 30;
+  }
+  const auto = getAutoOverlapPercent();
+  return auto !== null && auto <= 30;
+}
+
+function getAutoOverlapPercent(overriddenBufferLength = null) {
+  // 優先使用傳入的 bufferLength，其次是 currentAudioBufferLength，最後回退到 wavesurfer backend
+  const bufferLength = overriddenBufferLength !== null
+    ? overriddenBufferLength
+    : (
+      // If not in selectionExpandMode, prefer wavesurfer internal decoded length (original wav)
+      (!selectionExpandMode && getWavesurfer()?.getDecodedData()?.length) ||
+      currentAudioBufferLength ||
+      getWavesurfer()?.getDecodedData()?.length ||
+      getWavesurfer()?.backend?.buffer?.length
+    );
   const canvasWidth = document
     .querySelector('#spectrogram-only canvas')
     ?.width || container.clientWidth;
@@ -997,8 +1066,6 @@ function getAutoOverlapPercent() {
 }
 
 function formatFreqValue(value) {
-  // value is internal kHz value. If Time Expansion mode is active, the UI
-  // should display frequency values multiplied by 10.
   const timeExp = getTimeExpansionMode();
   const display = timeExp ? (value * 10) : value;
   return Math.abs(display - Math.round(display)) < 0.001
@@ -1017,7 +1084,6 @@ applyFreqRangeBtn.addEventListener('click', () => {
     return;
   }
 
-  // convert displayed values back to internal kHz space
   const min = dispMin / divisor;
   const max = dispMax / divisor;
   updateFrequencyRange(min, max);
@@ -1046,7 +1112,8 @@ function handleFftSize(size) {
       updateSpectrogramSettingsText();
     },
     currentFftSize,
-    currentWindowType
+    currentWindowType,
+    shouldUseFlashForReplace(),
   );
 }
 
@@ -1069,27 +1136,31 @@ function handleWindowType(type) {
       updateSpectrogramSettingsText();
     },
     currentFftSize,
-    currentWindowType
+    currentWindowType,
+    shouldUseFlashForReplace(),
   );
 }
 
 function handleOverlapChange() {
 const colorMap = getCurrentColorMap();
 freqHoverControl?.hideHover();
-replacePlugin(
-colorMap,
-spectrogramHeight,
-currentFreqMin,
-currentFreqMax,
-getOverlapPercent(),
-() => {
+    replacePlugin(
+    colorMap,
+    spectrogramHeight,
+    currentFreqMin,
+    currentFreqMax,
+  getOverlapPercent(),
+  () => {
 freqHoverControl?.refreshHover();
 autoIdControl?.updateMarkers();
 duration = getWavesurfer().getDuration();
 zoomControl.applyZoom();
 renderAxes();
 updateSpectrogramSettingsText();
-}
+  },
+  currentFftSize,
+  currentWindowType,
+  shouldUseFlashForReplace(),
 );
 }
 
@@ -1104,19 +1175,22 @@ colorMap,
 spectrogramHeight,
 freqMin,
 freqMax,
-getOverlapPercent(),
-() => {
-freqHoverControl?.refreshHover();
-autoIdControl?.updateMarkers();
-duration = getWavesurfer().getDuration();
-zoomControl.applyZoom();
-renderAxes();
-if (freqHoverControl) {
-freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
-autoIdControl?.updateMarkers();
-}
-updateSpectrogramSettingsText();
-}
+  getOverlapPercent(),
+  () => {
+    freqHoverControl?.refreshHover();
+    autoIdControl?.updateMarkers();
+    duration = getWavesurfer().getDuration();
+    zoomControl.applyZoom();
+    renderAxes();
+    if (freqHoverControl) {
+      freqHoverControl.setFrequencyRange(currentFreqMin, currentFreqMax);
+      autoIdControl?.updateMarkers();
+    }
+    updateSpectrogramSettingsText();
+  },
+  currentFftSize,
+  currentWindowType,
+  shouldUseFlashForReplace(),
 );
 }
 
@@ -1124,16 +1198,19 @@ const clearAllBtn = document.getElementById('clearAllBtn');
 clearAllBtn.addEventListener('click', () => {
 clearFileList();
 sidebarControl.refresh('');
-replacePlugin(
-getCurrentColorMap(),
-spectrogramHeight,
-currentFreqMin,
-currentFreqMax,
-getOverlapPercent(),
-() => {
-updateSpectrogramSettingsText();
-}
-);
+  replacePlugin(
+    getCurrentColorMap(),
+    spectrogramHeight,
+    currentFreqMin,
+    currentFreqMax,
+    getOverlapPercent(),
+    () => {
+      updateSpectrogramSettingsText();
+    },
+    currentFftSize,
+    currentWindowType,
+    shouldUseFlashForReplace(),
+  );
 showDropOverlay();
 loadingOverlay.style.display = 'none';
 zoomControlsElem.style.display = 'none';
@@ -1186,7 +1263,10 @@ clearTrashBtn.addEventListener('click', () => {
             getOverlapPercent(),
             () => {
               updateSpectrogramSettingsText();
-            }
+            },
+            currentFftSize,
+            currentWindowType,
+            shouldUseFlashForReplace(),
           );
           showDropOverlay();
           loadingOverlay.style.display = 'none';
@@ -1295,6 +1375,11 @@ expandBackBtn.addEventListener('click', async () => {
       duration = getWavesurfer().getDuration();
       currentExpandBlob = null;
       selectionExpandMode = false;
+      // Restore original audio buffer length if we saved it before expansion
+      if (savedAudioBufferLengthBeforeExpand !== null) {
+        currentAudioBufferLength = savedAudioBufferLengthBeforeExpand;
+        savedAudioBufferLengthBeforeExpand = null;
+      }
       sampleRateBtn.disabled = false;
       zoomControl.setZoomLevel(0);
       renderAxes();
@@ -1354,7 +1439,11 @@ document.addEventListener("file-loaded", async () => {
     const arrayBuf = await currentFile.arrayBuffer();
     const ac = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuf = await ac.decodeAudioData(arrayBuf.slice(0));
-    currentAudioBufferLength = audioBuf.length;
+    // Prefer Wavesurfer decoded internal length for the original audio buffer when available
+    const wsDecodedLen = getWavesurfer()?.getDecodedData()?.length;
+    currentAudioBufferLength = wsDecodedLen || audioBuf.length;
+    // If a saved original length from expansion exists, clear it because we just loaded the real file
+    savedAudioBufferLengthBeforeExpand = null;
     const workerOverlap = currentOverlap === 'auto'
       ? getAutoOverlapPercent()
       : getOverlapPercent();
@@ -1371,6 +1460,7 @@ expandHistory = [];
 currentExpandBlob = null;
 updateExpandBackBtn();
   currentAudioBufferLength = 0;
+  savedAudioBufferLengthBeforeExpand = null;
   playPauseBtn.disabled = true;
   hideStopButton();
   updateSpectrogramSettingsText();
