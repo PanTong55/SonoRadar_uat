@@ -63,10 +63,16 @@ async function reloadCurrentSpectrogram() {
     const wsManager = await import('./wsManager.js');
     
     const ws = wsManager.getWavesurfer();
-    const plugin = wsManager.getPlugin();
     
-    if (!ws || !plugin) {
-      console.warn('Wavesurfer or plugin not initialized');
+    if (!ws) {
+      console.warn('Wavesurfer not initialized');
+      return;
+    }
+
+    // 檢查音頻數據是否可用
+    const decodedData = ws.getDecodedData();
+    if (!decodedData) {
+      console.warn('No audio data available');
       return;
     }
 
@@ -87,6 +93,10 @@ async function reloadCurrentSpectrogram() {
     // 取得 overlap（從 UI）
     const overlapEl = document.getElementById('overlapInput');
     const overlap = overlapEl && overlapEl.value ? parseInt(overlapEl.value) : null;
+
+    // ✅ 添加足夠的延遲確保舊 plugin 完全銷毀
+    // 包括 DOM 移除、事件監聽器清理等
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // 重新渲染頻譜圖
     wsManager.replacePlugin(colorMap, 800, frequencyMin, frequencyMax, overlap, null, fftSize, windowType);

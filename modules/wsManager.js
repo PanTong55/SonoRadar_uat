@@ -107,10 +107,42 @@ export function replacePlugin(
   ws.registerPlugin(plugin);
 
   try {
-    plugin.render();
-    requestAnimationFrame(() => {
-      if (typeof onRendered === 'function') onRendered();
-    });
+    // ✅ 確保 plugin 的 onInit() 完全執行後再渲染
+    // 多級 Promise 鏈確保所有初始化完成
+    Promise.resolve()
+      .then(() => {
+        // 第一層：確保 registerPlugin 完成
+        return new Promise(resolve => setTimeout(resolve, 10));
+      })
+      .then(() => {
+        // 第二層：強制調用 render()
+        if (plugin && typeof plugin.render === 'function') {
+          plugin.render();
+        }
+      })
+      .then(() => {
+        // 第三層：觸發 redraw 事件強制更新
+        if (ws && typeof ws.redraw === 'function') {
+          ws.redraw();
+        }
+      })
+      .then(() => {
+        // 第四層：使用 requestAnimationFrame 確保 DOM 繪製完成
+        return new Promise(resolve => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      })
+      .then(() => {
+        // 第五層：觸發回調
+        if (typeof onRendered === 'function') {
+          onRendered();
+        }
+      })
+      .catch(err => {
+        console.warn('⚠️ Spectrogram render failed:', err);
+      });
   } catch (err) {
     console.warn('⚠️ Spectrogram render failed:', err);
   }
