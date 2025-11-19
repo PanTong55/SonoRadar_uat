@@ -680,7 +680,6 @@ export function initMapPopup({
         L.DomEvent.on(container, 'dblclick', L.DomEvent.stopPropagation);
 
         routeBtnGroup = L.DomUtil.create('div', 'route-button-group', container);
-        routeBtnGroup.style.display = 'none';
 
         const createLink = L.DomUtil.create('a', '', routeBtnGroup);
         createLink.href = '#';
@@ -716,8 +715,8 @@ export function initMapPopup({
           .on(toggle, 'mousedown', L.DomEvent.stopPropagation)
           .on(toggle, 'dblclick', L.DomEvent.stopPropagation)
           .on(toggle, 'click', () => {
-            const visible = routeBtnGroup.style.display === 'flex';
-            routeBtnGroup.style.display = visible ? 'none' : 'flex';
+            const visible = routeBtnGroup.classList.contains('visible');
+            routeBtnGroup.classList.toggle('visible', !visible);
             toggle.classList.toggle('active', !visible);
           });
 
@@ -732,6 +731,8 @@ export function initMapPopup({
       options: { position: 'topleft' },
       onAdd() {
         const container = L.DomUtil.create('div', 'leaflet-bar leaflet-text-toggle-control');
+        container.style.display = 'flex';
+
         const link = L.DomUtil.create('a', '', container);
         link.href = '#';
         link.title = 'Text';
@@ -745,8 +746,10 @@ export function initMapPopup({
           .on(link, 'dblclick', L.DomEvent.stopPropagation)
           .on(link, 'click', toggleTextMode);
 
-        // Clear Text button (same style as text toggle control)
-        const clearLink = L.DomUtil.create('a', '', container);
+        // Clear Text button group (horizontally aligned)
+        const textButtonGroup = L.DomUtil.create('div', 'text-button-group', container);
+
+        const clearLink = L.DomUtil.create('a', '', textButtonGroup);
         clearLink.href = '#';
         clearLink.title = 'Clear Text';
         clearLink.innerHTML = '<i class="fa-solid fa-broom"></i>';
@@ -770,6 +773,8 @@ export function initMapPopup({
                   });
                   textMarkers = [];
                   updateMarkerPointerEvents();
+                  // 隱藏 Clear Text button
+                  updateTextClearButtonVisibility();
                 } catch (e) {}
               }
             });
@@ -1143,6 +1148,7 @@ export function initMapPopup({
       } else {
         map.removeLayer(marker);
         textMarkers = textMarkers.filter(m => m !== marker);
+        updateTextClearButtonVisibility();
       }
       updateMarkerPointerEvents();
     };
@@ -1206,6 +1212,7 @@ export function initMapPopup({
             if (val && (val.value === 'remove' || val.label === 'Remove')) {
               map.removeLayer(marker);
               textMarkers = textMarkers.filter(m => m !== marker);
+              updateTextClearButtonVisibility();
               updateMarkerPointerEvents();
             }
           } finally {
@@ -1266,7 +1273,20 @@ export function initMapPopup({
     marker.addTo(map);
     textMarkers.push(marker);
     updateMarkerPointerEvents();
+    updateTextClearButtonVisibility();
     editTextMarker(marker);
+  }
+
+  function updateTextClearButtonVisibility() {
+    if (!clearTextBtn || !clearTextBtn.parentElement) return;
+    const textButtonGroup = clearTextBtn.parentElement;
+    if (textMarkers.length > 0) {
+      // Show with smooth animation
+      textButtonGroup.classList.add('visible');
+    } else {
+      // Hide with smooth animation
+      textButtonGroup.classList.remove('visible');
+    }
   }
 
   function toggleTextMode() {
@@ -1362,8 +1382,13 @@ export function initMapPopup({
     if (popup.style.display === 'block') {
       if (isMaximized) toggleMaximize();
       if (isMinimized) toggleMinimize();
-      popup.style.display = 'none';
-      document.body.classList.remove('map-open');
+      // 淡出動畫
+      popup.classList.add('hidden');
+      setTimeout(() => {
+        popup.style.display = 'none';
+        popup.classList.remove('hidden');
+        document.body.classList.remove('map-open');
+      }, 300);
       if (textMode) toggleTextMode();
     } else {
       popup.style.display = 'block';
@@ -1402,11 +1427,17 @@ export function initMapPopup({
         localStorage.setItem('mapFloatingLeft', floatingState.left);
         localStorage.setItem('mapFloatingTop', floatingState.top);
       }
-      // 設置最大化狀態
+      // 啟用動畫並設置最大化狀態
+      popup.classList.add('animating');
       popup.style.left = '0px';
       popup.style.top = '0px';
       popup.style.width = `${window.innerWidth -2}px`;
       popup.style.height = `${window.innerHeight -2}px`;
+      // 在動畫完成後移除 animating class 並重新計算 map 大小
+      setTimeout(() => {
+        popup.classList.remove('animating');
+        map?.invalidateSize(true);
+      }, 400);
       // 狀態：最大化
       minBtn.innerHTML = '<i class="fa-solid fa-window-minimize"></i>';
       minBtn.title = 'Minimize';
@@ -1414,11 +1445,17 @@ export function initMapPopup({
       maxBtn.title = 'Restore Down';
       isMaximized = true;
     } else {
-      // 從最大化狀態還原時，直接使用儲存的浮動視窗狀態
+      // 啟用動畫並從最大化狀態還原
+      popup.classList.add('animating');
       popup.style.width = `${floatingState.width}px`;
       popup.style.height = `${floatingState.height}px`;
       popup.style.left = `${floatingState.left}px`;
       popup.style.top = `${floatingState.top}px`;
+      // 在動畫完成後移除 animating class 並重新計算 map 大小
+      setTimeout(() => {
+        popup.classList.remove('animating');
+        map?.invalidateSize(true);
+      }, 400);
       // 狀態：一般（非最大化/最小化）
       minBtn.innerHTML = '<i class="fa-solid fa-window-minimize"></i>';
       minBtn.title = 'Minimize';
@@ -1426,7 +1463,6 @@ export function initMapPopup({
       maxBtn.title = 'Maximize';
       isMaximized = false;
     }
-    map?.invalidateSize();
   }
 
   function toggleMinimize() {
@@ -1442,11 +1478,17 @@ export function initMapPopup({
         localStorage.setItem('mapFloatingLeft', floatingState.left);
         localStorage.setItem('mapFloatingTop', floatingState.top);
       }
-      // 設置最小化狀態（從任何狀態都直接最小化）
+      // 啟用動畫並設置最小化狀態
+      popup.classList.add('animating');
       popup.style.left = '0px';
       popup.style.top = `${window.innerHeight - 362}px`;
       popup.style.width = '290px';
       popup.style.height = '360px';
+      // 在動畫完成後移除 animating class 並重新計算 map 大小
+      setTimeout(() => {
+        popup.classList.remove('animating');
+        map?.invalidateSize(true);
+      }, 400);
       // 狀態：最小化
       minBtn.innerHTML = '<i class="fa-solid fa-window-maximize"></i>';
       minBtn.title = 'Restore Up';
@@ -1465,11 +1507,17 @@ export function initMapPopup({
       isMinimized = true;
       isMaximized = false; // 確保狀態正確
     } else {
-      // 從最小化狀態還原，直接使用儲存的浮動視窗狀態
+      // 啟用動畫並從最小化狀態還原
+      popup.classList.add('animating');
       popup.style.width = `${floatingState.width}px`;
       popup.style.height = `${floatingState.height}px`;
       popup.style.left = `${floatingState.left}px`;
       popup.style.top = `${floatingState.top}px`;
+      // 在動畫完成後移除 animating class 並重新計算 map 大小
+      setTimeout(() => {
+        popup.classList.remove('animating');
+        map?.invalidateSize(true);
+      }, 400);
       // 狀態：一般（非最大化/最小化）
       minBtn.innerHTML = '<i class="fa-solid fa-window-minimize"></i>';
       minBtn.title = 'Minimize';
@@ -1487,7 +1535,6 @@ export function initMapPopup({
       }
       isMinimized = false;
     }
-    map?.invalidateSize();
   }
 
   let dragging = false;
@@ -1584,6 +1631,7 @@ export function initMapPopup({
     const state = getEdgeState(e.clientX, e.clientY);
     if (state.onLeft || state.onRight || state.onTop || state.onBottom) {
       resizing = true;
+      popup.classList.add('resizing');
       resizeLeft = state.onLeft;
       resizeRight = state.onRight;
       resizeTop = state.onTop;
@@ -1639,6 +1687,7 @@ export function initMapPopup({
     const state = getEdgeState(e.clientX, e.clientY);
     if (state.onLeft || state.onRight || state.onTop || state.onBottom) {
       resizing = true;
+      popup.classList.add('resizing');
       resizeLeft = state.onLeft;
       resizeRight = state.onRight;
       resizeTop = state.onTop;
@@ -1719,6 +1768,7 @@ export function initMapPopup({
     }
     if (resizing) {
       resizing = false;
+      popup.classList.remove('resizing');
       map?.dragging.enable();
       
       // 只在非最小化和非最大化狀態時更新並儲存 Floating window 狀態

@@ -1309,6 +1309,24 @@ input.tag-button.editing {
   cursor: default;
   user-select: none;
   overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.map-popup.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-popup.resizing {
+  transition: none;
+}
+
+.map-popup.animating {
+  transition: left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .popup-drag-bar {
@@ -1690,9 +1708,18 @@ input.tag-button.editing {
 }
 
 .leaflet-route-toggle-control .route-button-group {
-  display: none;
+  display: flex;
   margin-left: 1px;
   gap: 1px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.3s ease, opacity 0.3s ease;
+}
+
+.leaflet-route-toggle-control .route-button-group.visible {
+  max-width: 100px;
+  opacity: 1;
 }
 
 .leaflet-route-toggle-control .route-button-group a i,
@@ -1721,14 +1748,42 @@ input.tag-button.editing {
 }
 
 .leaflet-text-toggle-control {
+  display: flex;
+  align-items: center;
   margin-top: 1px !important;
 }
 
-.leaflet-text-toggle-control a.active {
+.leaflet-text-toggle-control > a.active {
   background-color: #e6e6e6;
 }
 
-.leaflet-text-toggle-control a i {
+.leaflet-text-toggle-control > a i {
+  color: #363636;
+}
+
+.leaflet-text-toggle-control .text-button-group {
+  display: flex;
+  margin-left: 1px;
+  gap: 1px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.3s ease, opacity 0.3s ease;
+}
+
+.leaflet-text-toggle-control .text-button-group.visible {
+  max-width: 100px;
+  opacity: 1;
+}
+
+.leaflet-text-toggle-control .text-button-group a {
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
+}
+
+.leaflet-text-toggle-control .text-button-group a i {
   color: #363636;
 }
 
