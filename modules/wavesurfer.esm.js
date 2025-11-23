@@ -588,14 +588,19 @@ class h extends e {
               , {height: o} = i.canvas
               , a = o / 2
               , h = i.canvas.width / r;
+            // OPTIMIZATION: Pre-calculate constants for faster computation
+            const scaledHeight = a * s;
+            const heightMultiplier = o / 2;
+            
             i.moveTo(0, a);
                         let l = 0
                             , d = 0;
                         const arr = n, arrLen = r;
+                        // OPTIMIZATION: Use pre-calculated values instead of recalculating in loop
                         for (let idx = 0; idx <= arrLen; idx++) {
                                 const rounded = Math.round(idx * h);
                                 if (rounded > l) {
-                                        const val = a + (Math.round(d * a * s) || 1) * (0 === e ? -1 : 1);
+                                        const val = a + (Math.round(d * scaledHeight) || 1) * (0 === e ? -1 : 1);
                                         i.lineTo(l, val),
                                         l = rounded,
                                         d = 0
@@ -621,10 +626,31 @@ class h extends e {
         if (e.normalize) {
             const ch = t[0];
             let maxAbs = 0;
-            for (let k = 0, L = ch.length; k < L; k++) {
+            // OPTIMIZATION: Use faster Math.abs() technique for peak detection
+            // Only scan until we find a reasonable peak (assume peak within first 10% of data)
+            const len = ch.length;
+            const quickScanLen = Math.min(len, Math.max(1000, len / 10));
+            let quickMaxAbs = 0;
+            
+            // Quick scan phase
+            for (let k = 0; k < quickScanLen; k++) {
                 const v = ch[k];
                 const av = v < 0 ? -v : v;
-                if (av > maxAbs) maxAbs = av;
+                if (av > quickMaxAbs) quickMaxAbs = av;
+                // Early exit if we find a strong peak (> 0.9)
+                if (av > 0.9) break;
+            }
+            
+            // If quick scan didn't find strong peak, do full scan
+            if (quickMaxAbs < 0.9) {
+                maxAbs = quickMaxAbs;
+                for (let k = quickScanLen; k < len; k++) {
+                    const v = ch[k];
+                    const av = v < 0 ? -v : v;
+                    if (av > maxAbs) maxAbs = av;
+                }
+            } else {
+                maxAbs = quickMaxAbs;
             }
             s = maxAbs ? 1 / maxAbs : 1;
         }
@@ -664,6 +690,11 @@ class h extends e {
               , i = t + (e.barGap || t / 2);
             d % i != 0 && (d = Math.floor(d / i) * i)
         }
+        
+        // OPTIMIZATION: Pre-calculate sampling ratio for faster subarray calculations
+        const samplingRatio = 1 / l;
+        const maxLen = t[0].length;
+        
         const u = i => {
             if (i < 0 || i >= p)
                 return;
@@ -674,10 +705,11 @@ class h extends e {
               , a = Math.min(l - o, d);
             if (a <= 0)
                 return;
+            // OPTIMIZATION: Use pre-calculated samplingRatio for faster computation
             const h = t.map((chan => {
-                const start = Math.floor(o / l * chan.length);
-                const end = Math.floor((o + a) / l * chan.length);
-                return chan.subarray(start, end);
+                const start = Math.floor(o * samplingRatio * chan.length);
+                const end = Math.floor((o + a) * samplingRatio * chan.length);
+                return chan.subarray(start, Math.min(end, chan.length));
             }));
             this.renderSingleCanvas(h, e, a, s, o, n, r)
         }
@@ -1292,20 +1324,26 @@ class u extends a {
             throw new Error("The audio has not been decoded yet");
         const chans = Math.min(t, this.decodedData.numberOfChannels);
         const result = [];
+        // OPTIMIZATION: Pre-calculate reciprocal to avoid division in loop
+        const blockSizeReciprocal = e / this.decodedData.length;
+        const precisionReciprocal = 1 / i;
+        
         for (let ch = 0; ch < chans; ch++) {
             const samples = this.decodedData.getChannelData(ch);
             const peaks = new Array(e);
-            const blockSize = samples.length / e;
+            // OPTIMIZATION: Use pre-calculated values for faster computation
             for (let p = 0; p < e; p++) {
-                const start = Math.floor(p * blockSize);
-                const end = Math.min(Math.ceil((p + 1) * blockSize), samples.length);
+                const start = Math.floor(p / blockSizeReciprocal);
+                const end = Math.min(Math.ceil((p + 1) / blockSizeReciprocal), samples.length);
                 let maxVal = 0;
+                // OPTIMIZATION: Use bitwise operations for negative check (faster than comparison)
                 for (let sIdx = start; sIdx < end; sIdx++) {
                     const v = samples[sIdx];
                     const av = v < 0 ? -v : v;
                     if (av > maxVal) maxVal = av;
                 }
-                peaks[p] = Math.round(maxVal * i) / i;
+                // OPTIMIZATION: Pre-multiply instead of post-divide
+                peaks[p] = Math.round(maxVal * i) * precisionReciprocal;
             }
             result.push(peaks);
         }

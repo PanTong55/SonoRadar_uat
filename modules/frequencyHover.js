@@ -1,4 +1,6 @@
 import { getTimeExpansionMode } from './fileState.js';
+import { getWavesurfer, getPlugin } from './wsManager.js';
+import { showPowerSpectrumPopup, calculateSpectrumWithOverlap, findPeakFrequency } from './powerSpectrum.js';
 
 export function initFrequencyHover({
   viewerId,
@@ -162,6 +164,9 @@ export function initFrequencyHover({
 
     // Ctrl-key state while drawing
     let ctrlPressed = false;
+    // track current selection duration (ms) while drawing so we can
+    // suppress Ctrl icon and auto-expand for very short selections
+    let currentSelectionDurationMs = 0;
     // Create ctrl icon element and keyboard handlers; visibility controlled below
     const ctrlIcon = document.createElement('i');
     ctrlIcon.className = 'fa-solid fa-magnifying-glass selection-ctrl-icon';
@@ -176,7 +181,10 @@ export function initFrequencyHover({
     const keyDownHandler = (ev) => {
       if (ev.key === 'Control') {
         ctrlPressed = true;
-        ctrlIcon.style.display = '';
+        // only show icon when selection duration is >= 100ms
+        if (currentSelectionDurationMs >= 100) {
+          ctrlIcon.style.display = '';
+        }
       }
     };
     const keyUpHandler = (ev) => {
@@ -202,9 +210,10 @@ export function initFrequencyHover({
       const width = Math.abs(currentX - startX);
       // 計算時間
       const actualWidth = getDuration() * getZoomLevel();
-      const startTime = (startX / actualWidth) * getDuration() * 1000;
-      const endTime = (currentX / actualWidth) * getDuration() * 1000;
-      showSelectionTimeInfo(startTime, endTime);
+      const startTimeMs = (startX / actualWidth) * getDuration() * 1000;
+      const endTimeMs = (currentX / actualWidth) * getDuration() * 1000;
+      currentSelectionDurationMs = Math.abs(endTimeMs - startTimeMs);
+      showSelectionTimeInfo(startTimeMs, endTimeMs);
       // 畫框
       const y = Math.min(currentY, startY);
       const height = Math.abs(currentY - startY);
@@ -215,7 +224,8 @@ export function initFrequencyHover({
 
       // Update ctrl icon visibility depending on current ctrl state (mouse event or keyboard)
       const evtCtrl = type === 'touch' ? false : !!(ev.ctrlKey);
-      if (evtCtrl || ctrlPressed) {
+      // Only show ctrl icon for selections that are at least 100ms
+      if ((evtCtrl || ctrlPressed) && currentSelectionDurationMs >= 100) {
         ctrlIcon.style.display = '';
       } else {
         ctrlIcon.style.display = 'none';
@@ -276,7 +286,9 @@ export function initFrequencyHover({
       }
       // If Ctrl was pressed during selection completion, immediately trigger expand-selection
       const completedWithCtrl = ctrlPressed || (ev && ev.ctrlKey);
-      if (completedWithCtrl) {
+      // Only allow immediate Ctrl-expand for selections >= 100ms
+      const selDurationMs = (newSel.data.endTime - newSel.data.startTime) * 1000;
+      if (completedWithCtrl && selDurationMs >= 100) {
         // behave like clicking expand button
         suppressHover = false;
         isOverBtnGroup = false;
@@ -318,6 +330,11 @@ export function initFrequencyHover({
   });
 
   viewer.addEventListener('contextmenu', (e) => {
+    // 如果右鍵在 selection area 上，不要顯示 persistent-line，直接返回
+    if (e.target.closest('.selection-rect')) {
+      return;
+    }
+    
     if (!persistentLinesEnabled || disablePersistentLinesForScrollbar || isOverTooltip) return;
     if (e.target.closest('.selection-expand-btn') || e.target.closest('.selection-fit-btn') || e.target.closest('.selection-btn-group')) return;
     e.preventDefault();
@@ -341,16 +358,109 @@ export function initFrequencyHover({
     }
   });
 
-  function createTooltip(left, top, width, height, Fhigh, Flow, Bandwidth, Duration, rectObj, startTime, endTime) {
-    const selObj = { data: { startTime, endTime, Flow, Fhigh }, rect: rectObj, tooltip: null, expandBtn: null, closeBtn: null, btnGroup: null, durationLabel: null };
+  // 計算 selection area 內的峰值頻率
+  async function calculatePeakFrequency(sel) {
+    try {
+      const ws = getWavesurfer();
+      if (!ws) return null;
 
-    if (Duration * 1000 <= 100) {
+      const { startTime, endTime, Flow, Fhigh } = sel.data;
+      const durationMs = (endTime - startTime) * 1000;
+
+      // 根據 Time Expansion 模式計算用於判斷的持續時間
+      const timeExp = getTimeExpansionMode();
+      const judgeDurationMs = timeExp ? (durationMs / 10) : durationMs;
+      
+      // 只有 displayTime < 100ms 時才計算
+      if (judgeDurationMs >= 100) return null;
+
+      // 如果 Power Spectrum popup 已開啟且已有計算結果，優先使用 popup 的 peak（確保 tooltip 與 popup 一致）
+      if (sel.powerSpectrumPopup && sel.powerSpectrumPopup.isOpen && sel.powerSpectrumPopup.isOpen()) {
+        try {
+          const popupPeak = sel.powerSpectrumPopup.getPeakFrequency && sel.powerSpectrumPopup.getPeakFrequency();
+          if (popupPeak !== null && popupPeak !== undefined) {
+            sel.data.peakFreq = popupPeak;
+            if (sel.tooltip && sel.tooltip.querySelector('.fpeak')) {
+              const freqMul = timeExp ? 10 : 1;
+              sel.tooltip.querySelector('.fpeak').textContent = (popupPeak * freqMul).toFixed(1);
+            }
+            return popupPeak;
+          }
+        } catch (e) {
+          // ignore and fallback to calculating locally
+        }
+      }
+
+      // 獲取原始音頻緩衝
+      const decodedData = ws.getDecodedData();
+      if (!decodedData || !decodedData.getChannelData) return null;
+
+      // 使用與 Power Spectrum 完全相同的設置參數
+      const fftSize = 1024; // 與 Power Spectrum 相同固定為 1024
+      const windowType = window.__spectrogramSettings?.windowType || 'hann';
+      const overlap = window.__spectrogramSettings?.overlap || 'auto';
+      const sampleRate = window.__spectrogramSettings?.sampleRate || 256000;
+
+      const startSample = Math.floor(startTime * sampleRate);
+      const endSample = Math.floor(endTime * sampleRate);
+
+      if (endSample <= startSample) return null;
+
+      // 提取 crop 音頻數據
+      const audioData = new Float32Array(decodedData.getChannelData(0).slice(startSample, endSample));
+
+      // 使用 Power Spectrum 的完全相同方法計算頻譜 (包含 overlap 支持)
+      const spectrum = calculateSpectrumWithOverlap(
+        audioData,
+        sampleRate,
+        fftSize,
+        windowType,
+        overlap
+      );
+
+      if (!spectrum) return null;
+
+      // 使用 Power Spectrum 完全相同的峰值尋找方法
+      const peakFreq = findPeakFrequency(spectrum, sampleRate, fftSize, Flow, Fhigh);
+
+      if (peakFreq !== null) {
+        sel.data.peakFreq = peakFreq;
+        if (sel.tooltip && sel.tooltip.querySelector('.fpeak')) {
+          const freqMul = timeExp ? 10 : 1;
+          const dispPeakFreq = peakFreq * freqMul;
+          sel.tooltip.querySelector('.fpeak').textContent = dispPeakFreq.toFixed(1);
+        }
+        return peakFreq;
+      }
+    } catch (err) {
+      console.warn('計算峰值頻率時出錯:', err);
+    }
+    return null;
+  }
+
+  function createTooltip(left, top, width, height, Fhigh, Flow, Bandwidth, Duration, rectObj, startTime, endTime) {
+    const selObj = { 
+      data: { startTime, endTime, Flow, Fhigh }, 
+      rect: rectObj, 
+      tooltip: null, 
+      expandBtn: null, 
+      closeBtn: null, 
+      btnGroup: null, 
+      durationLabel: null,
+      powerSpectrumPopup: null  // 跟踪打開的 Power Spectrum popup
+    };
+
+    // 根據 Time Expansion 模式計算用於判斷的持續時間
+    const timeExp = getTimeExpansionMode();
+    const durationMs = Duration * 1000;
+    const judgeDurationMs = timeExp ? (durationMs / 10) : durationMs;
+    
+    if (judgeDurationMs <= 100) {
       selObj.tooltip = buildTooltip(selObj, left, top, width);
     }
 
   const durationLabel = document.createElement('div');
   durationLabel.className = 'selection-duration';
-  const timeExp = getTimeExpansionMode();
   const displayDurationMs = timeExp ? (Duration * 1000 / 10) : (Duration * 1000);
   durationLabel.textContent = `${displayDurationMs.toFixed(1)} ms`;
     rectObj.appendChild(durationLabel);
@@ -358,7 +468,8 @@ export function initFrequencyHover({
 
     selections.push(selObj);
 
-    if (Duration * 1000 > 100) {
+    // 根據 Time Expansion 模式判斷是否創建按鈕組
+    if (judgeDurationMs > 100) {
       createBtnGroup(selObj);
     }
 
@@ -372,10 +483,42 @@ export function initFrequencyHover({
         hoveredSelection = null;
       }
     });
+    
+    // 添加右鍵菜單処理
+    selObj.rect.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showSelectionContextMenu(e, selObj);
+    });
+
+    // 如果 duration < 100ms，自動計算峰值頻率
+    // 使用判斷時間（已考慮 Time Expansion）
+    if (judgeDurationMs < 100) {
+      calculatePeakFrequency(selObj).catch(err => {
+        console.error('計算峰值頻率失敗:', err);
+      });
+    }
+
     return selObj;
   }
 
   function removeSelection(sel) {
+    // 關閉 Power Spectrum popup (如果打開)
+    if (sel.powerSpectrumPopup) {
+      const popupElement = sel.powerSpectrumPopup.popup;
+      // 解除事件監聽器（如果有）以避免遺留引用
+      if (popupElement && sel._popupPeakListener) {
+        try {
+          popupElement.removeEventListener('peakUpdated', sel._popupPeakListener);
+        } catch (e) {}
+        delete sel._popupPeakListener;
+      }
+      if (popupElement && document.body.contains(popupElement)) {
+        popupElement.remove();
+      }
+      // 清除對象引用
+      sel.powerSpectrumPopup = null;
+    }
+
     const index = selections.indexOf(sel);
     if (index !== -1) {
       viewer.removeChild(selections[index].rect);
@@ -404,11 +547,32 @@ export function initFrequencyHover({
     const dispDurationMs = (Duration * 1000) / timeDiv;
     const dispSlope = dispDurationMs > 0 ? (dispBandwidth / dispDurationMs) : 0;
     tooltip.innerHTML = `
-      <div><b>F.high:</b> <span class="fhigh">${dispFhigh.toFixed(1)}</span> kHz</div>
-      <div><b>F.Low:</b> <span class="flow">${dispFlow.toFixed(1)}</span> kHz</div>
-      <div><b>Bandwidth:</b> <span class="bandwidth">${dispBandwidth.toFixed(1)}</span> kHz</div>
-      <div><b>Duration:</b> <span class="duration">${dispDurationMs.toFixed(1)}</span> ms</div>
-      <div><b>Avg.Slope:</b> <span class="slope">${dispSlope.toFixed(1)}</span> kHz/ms</div>
+      <table class="freq-tooltip-table">
+        <tr>
+          <td class="label">Freq.High:</td>
+          <td class="value"><span class="fhigh">${dispFhigh.toFixed(1)}</span> kHz</td>
+        </tr>
+        <tr>
+          <td class="label">Freq.Low:</td>
+          <td class="value"><span class="flow">${dispFlow.toFixed(1)}</span> kHz</td>
+        </tr>
+        <tr>
+          <td class="label">Freq.Peak:</td>
+          <td class="value"><span class="fpeak">-</span> kHz</td>
+        </tr>
+        <tr>
+          <td class="label">Bandwidth:</td>
+          <td class="value"><span class="bandwidth">${dispBandwidth.toFixed(1)}</span> kHz</td>
+        </tr>
+        <tr>
+          <td class="label">Duration:</td>
+          <td class="value"><span class="duration">${dispDurationMs.toFixed(1)}</span> ms</td>
+        </tr>
+        <tr>  
+          <td class="label">Avg.Slope:</td>
+          <td class="value"><span class="slope">${dispSlope.toFixed(1)}</span> kHz/ms</td>
+        </tr>
+      </table>
       <div class="tooltip-close-btn">×</div>
     `;
     tooltip.addEventListener('mouseenter', () => { isOverTooltip = true; suppressHover = true; hideAll(); });
@@ -556,6 +720,7 @@ export function initFrequencyHover({
     let resizing = false;
     let lockedHorizontal = null;
     let lockedVertical = null;
+    let lastPowerSpectrumUpdateTime = 0;  // 記錄上次更新時間
   
     // 只負責顯示滑鼠 cursor
     rect.addEventListener('mousemove', (e) => {
@@ -650,6 +815,33 @@ export function initFrequencyHover({
         }
   
         updateSelections();
+
+        // 如果 Power Spectrum popup 打開，使用節流進行更新（每 30ms 更新一次）
+        if (sel.powerSpectrumPopup && sel.powerSpectrumPopup.isOpen()) {
+          const currentTime = Date.now();
+          
+          // 只有在距離上次更新超過 30ms 時才進行更新
+          if (currentTime - lastPowerSpectrumUpdateTime >= 30) {
+            sel.powerSpectrumPopup.update({
+              startTime: sel.data.startTime,
+              endTime: sel.data.endTime,
+              Flow: sel.data.Flow,
+              Fhigh: sel.data.Fhigh
+            });
+            lastPowerSpectrumUpdateTime = currentTime;
+          }
+        }
+
+        // 即時計算峰值，確保與 Power Spectrum 同步
+        const durationMs = (sel.data.endTime - sel.data.startTime) * 1000;
+        const timeExp = getTimeExpansionMode();
+        const judgeDurationMs = timeExp ? (durationMs / 10) : durationMs;
+        
+        if (judgeDurationMs < 100) {
+          calculatePeakFrequency(sel).catch(err => {
+            console.error('Resize 時計算峰值頻率失敗:', err);
+          });
+        }
       };
   
       const upHandler = () => {
@@ -657,8 +849,41 @@ export function initFrequencyHover({
         isResizing = false;
         lockedHorizontal = null;
         lockedVertical = null;
+        
+        // Resize 完成後，立即進行最終的 Power Spectrum 更新
+        if (sel.powerSpectrumPopup && sel.powerSpectrumPopup.isOpen()) {
+          sel.powerSpectrumPopup.update({
+            startTime: sel.data.startTime,
+            endTime: sel.data.endTime,
+            Flow: sel.data.Flow,
+            Fhigh: sel.data.Fhigh
+          });
+        }
+        
+        // 重置更新計時器
+        lastPowerSpectrumUpdateTime = 0;
+        
         window.removeEventListener('mousemove', moveHandler);
         window.removeEventListener('mouseup', upHandler);
+
+        // 當 resize 完成後，根據 Time Expansion 模式判斷是否重新計算峰值
+        const durationMs = (sel.data.endTime - sel.data.startTime) * 1000;
+        const timeExp = getTimeExpansionMode();
+        const judgeDurationMs = timeExp ? (durationMs / 10) : durationMs;
+        
+        if (judgeDurationMs < 100) {
+          calculatePeakFrequency(sel).catch(err => {
+            console.error('Resize 後計算峰值頻率失敗:', err);
+          });
+        } else {
+          // 如果 resize 後超過 100ms，清除 peakFreq
+          if (sel.data.peakFreq !== undefined) {
+            delete sel.data.peakFreq;
+            if (sel.tooltip && sel.tooltip.querySelector('.fpeak')) {
+              sel.tooltip.querySelector('.fpeak').textContent = '-';
+            }
+          }
+        }
       };
   
       window.addEventListener('mousemove', moveHandler, { passive: true });
@@ -692,6 +917,12 @@ export function initFrequencyHover({
     tooltip.querySelector('.bandwidth').textContent = dispBandwidth.toFixed(1);
     tooltip.querySelector('.duration').textContent = dispDurationMs.toFixed(1);
     tooltip.querySelector('.slope').textContent = dispSlope.toFixed(1);
+    
+    // Update F.peak if available
+    if (data.peakFreq !== undefined) {
+      const dispPeakFreq = data.peakFreq * freqMul;
+      tooltip.querySelector('.fpeak').textContent = dispPeakFreq.toFixed(1);
+    }
   }
 
   function updateSelections() {
@@ -711,7 +942,11 @@ export function initFrequencyHover({
       sel.rect.style.height = `${height}px`;
 
       const durationMs = (endTime - startTime) * 1000;
-      if (durationMs <= 100) {
+      // 根據 Time Expansion 模式計算用於判斷的持續時間
+      const timeExp = getTimeExpansionMode();
+      const judgeDurationMs = timeExp ? (durationMs / 10) : durationMs;
+      
+      if (judgeDurationMs <= 100) {
         if (sel.btnGroup) sel.btnGroup.style.display = 'none';
         if (!sel.tooltip) {
           sel.tooltip = buildTooltip(sel, left, top, width);
@@ -738,6 +973,18 @@ export function initFrequencyHover({
 
   function clearSelections() {
     selections.forEach(sel => {
+      // 關閉 Power Spectrum popup (如果打開)
+      if (sel.powerSpectrumPopup) {
+        const popupElement = sel.powerSpectrumPopup.popup;
+        if (popupElement && sel._popupPeakListener) {
+          try { popupElement.removeEventListener('peakUpdated', sel._popupPeakListener); } catch(e) {}
+          delete sel._popupPeakListener;
+        }
+        if (popupElement && document.body.contains(popupElement)) {
+          popupElement.remove();
+        }
+        sel.powerSpectrumPopup = null;
+      }
       viewer.removeChild(sel.rect);
       if (sel.tooltip) viewer.removeChild(sel.tooltip);
     });
@@ -763,6 +1010,120 @@ export function initFrequencyHover({
       element.style.top = `${newY}px`;
     }, { passive: true });
     window.addEventListener('mouseup', () => { isDragging = false; });
+  }
+
+  // 顯示 selection area 的右鍵菜單
+  function showSelectionContextMenu(e, selection) {
+    // 移除舊菜單
+    const existingMenu = document.querySelector('.selection-context-menu');
+    if (existingMenu) existingMenu.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'selection-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = `${e.clientX}px`;
+    menu.style.top = `${e.clientY}px`;
+
+    const menuItem = document.createElement('div');
+    menuItem.className = 'selection-context-menu-item';
+    menuItem.textContent = 'Call analysis';
+
+    menuItem.addEventListener('click', () => {
+      handleShowPowerSpectrum(selection);
+      menu.remove();
+    });
+
+    menu.appendChild(menuItem);
+    document.body.appendChild(menu);
+
+    // 點擊其他地方關閉菜單
+    const closeMenu = (event) => {
+      if (!menu.contains(event.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+    }, 0);
+  }
+
+  // 處理顯示 Power Spectrum
+  function handleShowPowerSpectrum(selection) {
+    const ws = getWavesurfer();
+    if (!ws) return;
+
+    // 隱藏對應 selection 的 tooltip
+    if (selection.tooltip) {
+      selection.tooltip.style.display = 'none';
+    }
+
+    // 取得當前設置 (需要從 main.js 傳入或通過全局狀態)
+    const currentSettings = {
+      fftSize: window.__spectrogramSettings?.fftSize || 1024,
+      windowType: window.__spectrogramSettings?.windowType || 'hann',
+      sampleRate: window.__spectrogramSettings?.sampleRate || 256000,
+      overlap: window.__spectrogramSettings?.overlap || 'auto'
+    };
+
+    const popupObj = showPowerSpectrumPopup({
+      selection: selection.data,
+      wavesurfer: ws,
+      currentSettings
+    });
+
+    // 跟踪 popup
+    if (popupObj) {
+      selection.powerSpectrumPopup = popupObj;
+
+      // 監聽 popup 關閉，重新顯示 tooltip
+      const popupElement = popupObj.popup || popupObj;
+      const closeBtn = popupElement.querySelector('.popup-close-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          if (selection.tooltip) {
+            selection.tooltip.style.display = 'block';
+          }
+        });
+      }
+
+      // 如果 popup DOM 支援事件，監聽 peakUpdated 事件以同步 tooltip 值
+      if (popupObj.popup && popupObj.popup.addEventListener) {
+        const peakListener = (ev) => {
+          try {
+            const peakFreq = ev?.detail?.peakFreq;
+            if (peakFreq !== null && peakFreq !== undefined) {
+              selection.data.peakFreq = peakFreq;
+              // 若有 tooltip，立即更新顯示
+              if (selection.tooltip && selection.tooltip.querySelector('.fpeak')) {
+                const freqMul = getTimeExpansionMode() ? 10 : 1;
+                selection.tooltip.querySelector('.fpeak').textContent = (peakFreq * freqMul).toFixed(1);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        };
+
+        // attach and store listener on selection so we could remove later if needed
+        popupObj.popup.addEventListener('peakUpdated', peakListener);
+        // store reference for potential cleanup
+        selection._popupPeakListener = peakListener;
+      }
+
+      // 立即同步 popup 當前峰值（如已有）
+      try {
+        const currentPeak = popupObj.getPeakFrequency && popupObj.getPeakFrequency();
+        if (currentPeak !== null && currentPeak !== undefined) {
+          selection.data.peakFreq = currentPeak;
+          if (selection.tooltip && selection.tooltip.querySelector('.fpeak')) {
+            const freqMul = getTimeExpansionMode() ? 10 : 1;
+            selection.tooltip.querySelector('.fpeak').textContent = (currentPeak * freqMul).toFixed(1);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
   }
 
   return {

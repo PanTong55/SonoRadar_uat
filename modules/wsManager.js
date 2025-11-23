@@ -8,6 +8,8 @@ let plugin = null;
 let currentColorMap = null;
 let currentFftSize = 1024;
 let currentWindowType = 'hann';
+let currentPeakMode = false;
+let currentPeakThreshold = 0.4;
 
 export function initWavesurfer({
   container,
@@ -34,6 +36,8 @@ export function createSpectrogramPlugin({
   fftSamples = 1024,
   noverlap = null,
   windowFunc = 'hann',
+  peakMode = false,
+  peakThreshold = 0.4,
 }) {
   const baseOptions = {
     labels: false,
@@ -44,6 +48,8 @@ export function createSpectrogramPlugin({
     scale: 'linear',
     windowFunc,
     colorMap,
+    peakMode,
+    peakThreshold,
   };
 
   if (noverlap !== null) {
@@ -61,7 +67,9 @@ export function replacePlugin(
   overlapPercent = null,
   onRendered = null,  // ✅ 傳入 callback
   fftSamples = currentFftSize,
-  windowFunc = currentWindowType
+  windowFunc = currentWindowType,
+  peakMode = currentPeakMode,
+  peakThreshold = currentPeakThreshold
 ) {
   if (!ws) throw new Error('Wavesurfer not initialized.');
   const container = document.getElementById("spectrogram-only");
@@ -96,6 +104,8 @@ export function replacePlugin(
     fftSamples,
     noverlap,
     windowFunc,
+    peakMode,
+    peakThreshold,
   });
 
   ws.registerPlugin(plugin);
@@ -128,6 +138,18 @@ export function getCurrentFftSize() {
 
 export function getCurrentWindowType() {
   return currentWindowType;
+}
+
+export function setPeakMode(peakMode) {
+  currentPeakMode = peakMode;
+}
+
+export function setPeakThreshold(peakThreshold) {
+  currentPeakThreshold = peakThreshold;
+}
+
+export function getPeakThreshold() {
+  return currentPeakThreshold;
 }
 
 export function initScrollSync({

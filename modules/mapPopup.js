@@ -1308,26 +1308,68 @@ export function initMapPopup({
     updateCursor();
   }
 
-  function showDeviceLocation() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const { latitude: lat, longitude: lon } = pos.coords;
-      const icon = L.divIcon({
-        html: '<i class="fa-solid fa-location-arrow"></i>',
-        className: 'map-marker-device',
-        iconSize: [28, 28],
-        iconAnchor: [14, 28]
-      });
-      if (!map) {
-        createMap(lat, lon);
-      } else {
-        map.setView([lat, lon]);
-      }
-      const marker = L.marker([lat, lon], { icon, zIndexOffset: 1001 });
-      marker.addTo(map);
-      markers.push(marker);
-      updateMarkerPointerEvents();
+  function fitAllMarkers() {
+    if (!map) return;
+    
+    // 收集所有可見的 markers 的座標
+    const allCoords = [];
+    
+    // 添加主要 markers
+    markers.forEach(marker => {
+      const latlng = marker.getLatLng();
+      allCoords.push([latlng.lat, latlng.lng]);
     });
+    
+    // 添加 text markers
+    textMarkers.forEach(marker => {
+      const latlng = marker.getLatLng();
+      allCoords.push([latlng.lat, latlng.lng]);
+    });
+    
+    // 添加 survey point markers（如果 clustering manager 存在）
+    if (clusterManager && clusterManager.currentVisibleMarkers) {
+      clusterManager.currentVisibleMarkers.forEach(marker => {
+        try {
+          const latlng = marker.getLatLng();
+          allCoords.push([latlng.lat, latlng.lng]);
+        } catch (e) {}
+      });
+    }
+    
+    // 如果有 markers，自動 fit bounds
+    if (allCoords.length > 0) {
+      try {
+        map.fitBounds(allCoords, { padding: [50, 50], animate: true });
+      } catch (e) {
+        console.error('[MapPopup] Error fitting bounds:', e);
+      }
+    }
+  }
+
+  function zoomToCurrentMarker() {
+    if (!map) return;
+    
+    const idx = getCurrentIndex();
+    if (idx < 0) {
+      // No file selected, show default view
+      const HK_CENTER = [22.28552, 114.15769];
+      map.setView(HK_CENTER, DEFAULT_ZOOM);
+      return;
+    }
+    
+    const meta = getFileMetadata(idx);
+    const lat = parseFloat(meta.latitude);
+    const lon = parseFloat(meta.longitude);
+    
+    if (isNaN(lat) || isNaN(lon)) {
+      // No coordinates for current file, show default view
+      const HK_CENTER = [22.28552, 114.15769];
+      map.setView(HK_CENTER, DEFAULT_ZOOM);
+      return;
+    }
+    
+    // Zoom to current marker
+    map.setView([lat, lon], 16, { animate: true });
   }
 
   const DEFAULT_ZOOM = 13;
@@ -1437,6 +1479,8 @@ export function initMapPopup({
       setTimeout(() => {
         popup.classList.remove('animating');
         map?.invalidateSize(true);
+        // 最大化後自動 fit 所有 markers
+        fitAllMarkers();
       }, 400);
       // 狀態：最大化
       minBtn.innerHTML = '<i class="fa-solid fa-window-minimize"></i>';
@@ -1488,6 +1532,8 @@ export function initMapPopup({
       setTimeout(() => {
         popup.classList.remove('animating');
         map?.invalidateSize(true);
+        // 最小化後自動 zoom 到當前 marker
+        zoomToCurrentMarker();
       }, 400);
       // 狀態：最小化
       minBtn.innerHTML = '<i class="fa-solid fa-window-maximize"></i>';
@@ -1784,7 +1830,8 @@ export function initMapPopup({
         localStorage.setItem('mapFloatingTop', floatingState.top);
       }
       
-      map?.invalidateSize();
+      // 使用平滑動畫移動 basemap
+      map?.invalidateSize(true);
       document.body.style.cursor = '';
       popup.style.cursor = '';
       mapDiv.style.cursor = '';

@@ -6,6 +6,9 @@ replacePlugin,
 createSpectrogramPlugin,
 getCurrentColorMap,
 initScrollSync,
+setPeakMode,
+setPeakThreshold,
+getPeakThreshold,
 } from './modules/wsManager.js';
 
 import { initZoomControls } from './modules/zoomControl.js';
@@ -24,11 +27,36 @@ import { initDropdown } from './modules/dropdown.js';
 import { showMessageBox } from './modules/messageBox.js';
 import { initAutoIdPanel } from './modules/autoIdPanel.js';
 import { initFreqContextMenu } from './modules/freqContextMenu.js';
+import { initPeakControl, isPeakModeActive } from './modules/peakControl.js';
 import { getCurrentIndex, getFileList, toggleFileIcon, setFileList, clearFileList, getFileIconState, getFileNote, setFileNote, getFileMetadata, setFileMetadata, clearTrashFiles, getTrashFileCount, getCurrentFile, getTimeExpansionMode, setTimeExpansionMode, toggleTimeExpansionMode } from './modules/fileState.js';
 
 const spectrogramHeight = 800;
 let sidebarControl;
 let fileLoaderControl;
+
+/**
+ * 在 Wavesurfer Spectrogram 上應用紅色 Peak 線
+ */
+function applyPeakLineToCanvas() {
+  // 獲取 spectrogram 容器中的 canvas
+  const container = document.getElementById('spectrogram-only');
+  const canvas = container?.querySelector('canvas');
+  
+  if (!canvas) {
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return;
+  }
+
+  // 在 canvas 上繪製紅色垂直線，標記 peak 位置
+  // TODO: 實現從 Spectrogram 對象獲取 peakBand 信息的方式
+  // 暫時這是一個佔位符
+  console.log('[applyPeakLineToCanvas] Would draw peak line on canvas');
+}
+
 const container = document.getElementById('spectrogram-only');
 const viewer = document.getElementById('viewer-container');
 const timeAxis = document.getElementById('time-axis');
@@ -75,11 +103,6 @@ let suppressFreqValueAdjustment = false;
 const expandBackBtn = document.getElementById('expandBackBtn');
 const expandBackCount = document.getElementById('expandBackCount');
 let ignoreNextPause = false;
-const canvasElem = document.getElementById("spectrogram-canvas");
-const offscreen = canvasElem.transferControlToOffscreen();
-const specWorker = new Worker("./spectrogramWorker.js", { type: "module" });
-// 傳入初始 options（colorMap 和 windowFunc）給 worker
-specWorker.postMessage({ type: "init", canvas: offscreen, options: { colorMap: getCurrentColorMap(), windowFunc: currentWindowType, gainDB: 20, rangeDB: 80 } }, [offscreen]);
 
 const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 if (isMobileDevice) {
@@ -153,6 +176,16 @@ if (timeExpBtn) {
         });
         return;
       }
+    }
+
+    // 如果沒有加載任何文件，只切換 UI 狀態，不重繪
+    const ws = getWavesurfer();
+    const curDur = ws ? ws.getDuration() : 0;
+    if (curDur === 0) {
+      const newState = toggleTimeExpansionMode();
+      setTimeExpansionMode(newState);
+      applyTimeExpansionUI();
+      return;
     }
 
     const newState = toggleTimeExpansionMode();
@@ -1273,6 +1306,56 @@ document.body.classList.toggle('settings-open', isOpen);
 initExportCsv();
 initTrashProgram();
 initMapPopup();
+
+// 初始化 Peak Control
+initPeakControl({
+  peakBtnId: 'peakBtn',
+  onPeakModeToggled: (isActive) => {
+    // 設置 Peak Mode 狀態
+    setPeakMode(isActive);
+    // 重新創建 Spectrogram 插件以應用 Peak Mode
+    replacePlugin(
+      getCurrentColorMap(),
+      spectrogramHeight,
+      currentFreqMin,
+      currentFreqMax,
+      getOverlapPercent(),
+      () => {
+        zoomControl.applyZoom();
+        renderAxes();
+        freqHoverControl?.refreshHover();
+        autoIdControl?.updateMarkers();
+        updateSpectrogramSettingsText();
+      },
+      currentFftSize,
+      currentWindowType,
+      isActive
+    );
+  },
+  onThresholdChanged: (threshold) => {
+    // 設置 Peak Threshold 並重新渲染
+    setPeakThreshold(threshold);
+    replacePlugin(
+      getCurrentColorMap(),
+      spectrogramHeight,
+      currentFreqMin,
+      currentFreqMax,
+      getOverlapPercent(),
+      () => {
+        zoomControl.applyZoom();
+        renderAxes();
+        freqHoverControl?.refreshHover();
+        autoIdControl?.updateMarkers();
+        updateSpectrogramSettingsText();
+      },
+      currentFftSize,
+      currentWindowType,
+      isPeakModeActive(),
+      threshold
+    );
+  }
+});
+
 autoIdControl = initAutoIdPanel({
   spectrogramHeight,
   getDuration,
@@ -1411,10 +1494,7 @@ document.addEventListener("file-loaded", async () => {
     currentAudioBufferLength = wsDecodedLen || audioBuf.length;
     // If a saved original length from expansion exists, clear it because we just loaded the real file
     savedAudioBufferLengthBeforeExpand = null;
-    const workerOverlap = currentOverlap === 'auto'
-      ? getAutoOverlapPercent()
-      : getOverlapPercent();
-    specWorker.postMessage({ type: "render", buffer: audioBuf.getChannelData(0), sampleRate: audioBuf.sampleRate, fftSize: currentFftSize, overlap: workerOverlap, options: { colorMap: getCurrentColorMap(), windowFunc: currentWindowType } }, [audioBuf.getChannelData(0).buffer]);
+    // Spectrogram rendering is now handled by Wavesurfer's Spectrogram plugin
     updateSpectrogramSettingsText();
   }
 });
@@ -1450,3 +1530,11 @@ window.addEventListener('beforeunload', (e) => {
   e.preventDefault();
   e.returnValue = '';
 });
+
+// 暴露 spectrogram 設置供 Power Spectrum 使用
+window.__spectrogramSettings = {
+  get fftSize() { return currentFftSize; },
+  get windowType() { return currentWindowType; },
+  get sampleRate() { return currentSampleRate; },
+  get overlap() { return currentOverlap; }
+};

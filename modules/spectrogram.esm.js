@@ -362,17 +362,59 @@ class h extends s {
             for (let h = 0; h < t.length; h++) {
                 const o = this.resample(t[h])
                   , l = o[0].length
-                  , c = new ImageData(r,l);
+                  , c = new ImageData(r,l)
+                  , channelPeakBands = this.peakBandArrayPerChannel && this.peakBandArrayPerChannel[h] ? this.peakBandArrayPerChannel[h] : [];
+                
+                const cacheKey = `${t[h].length}:${r}`;
+                const mapping = this._resampleCache[cacheKey];
+                
                 for (let t = 0; t < o.length; t++)
                     for (let e = 0; e < o[t].length; e++) {
                         let idx = o[t][e];
                         if (idx < 0) idx = 0; else if (idx > 255) idx = 255;
                         const cmapBase = idx * 4;
                         const i = 4 * ((l - e - 1) * r + t);
-                        c.data[i] = this._colorMapUint[cmapBase];
-                        c.data[i + 1] = this._colorMapUint[cmapBase + 1];
-                        c.data[i + 2] = this._colorMapUint[cmapBase + 2];
-                        c.data[i + 3] = this._colorMapUint[cmapBase + 3];
+                        
+                        // Peak Mode 渲染邏輯
+                        let isPeakColumn = false;
+                        let isHighPeak = false; // 用於標記是否為高強度峰值
+
+                        if (this.options.peakMode && mapping && mapping[t]) {
+                          for (let m = 0; m < mapping[t].length; m++) {
+                            const sourceIdx = mapping[t][m][0];
+                            
+                            // 獲取峰值數據對象
+                            const peakData = channelPeakBands[sourceIdx];
+                            
+                            // 檢查數據是否存在且當前 Bin 匹配
+                            if (peakData && peakData.bin === e) {
+                              isPeakColumn = true;
+                              isHighPeak = peakData.isHigh; // 讀取是否超過70%
+                              break;
+                            }
+                          }
+                        }
+                        
+                        if (isPeakColumn) {
+                          if (isHighPeak) {
+                              // 超過 70% 顯示為 #FF70FC (RGB: 255, 112, 252)
+                              c.data[i] = 255;      // R
+                              c.data[i + 1] = 112;    // G
+                              c.data[i + 2] = 252;  // B
+                              c.data[i + 3] = 255;  // A
+                          } else {
+                              // 普通峰值顯示紅色
+                              c.data[i] = 255;      // R
+                              c.data[i + 1] = 0;    // G
+                              c.data[i + 2] = 0;    // B
+                              c.data[i + 3] = 255;  // A
+                          }
+                        } else {
+                          c.data[i] = this._colorMapUint[cmapBase];
+                          c.data[i + 1] = this._colorMapUint[cmapBase + 1];
+                          c.data[i + 2] = this._colorMapUint[cmapBase + 2];
+                          c.data[i + 3] = this._colorMapUint[cmapBase + 3];
+                        }
                     }
                 const u = this.hzToScale(a) / this.hzToScale(i)
                   , f = this.hzToScale(n) / this.hzToScale(i)
@@ -388,23 +430,36 @@ class h extends s {
     }
     createFilterBank(t, e, s, r) {
                 // cache by scale name + params to avoid rebuilding
-                const cacheKey = `${this.scale}:${t}:${e}:${this.fftSamples}`;
+                // Include frequency range in cache key for optimization
+                const freqMinStr = this.frequencyMin || "0";
+                const freqMaxStr = this.frequencyMax || "0";
+                const cacheKey = `${this.scale}:${t}:${e}:${this.fftSamples}:${freqMinStr}:${freqMaxStr}`;
                 if (this._filterBankCache[cacheKey])
                         return this._filterBankCache[cacheKey];
 
                 const i = s(0)
-                    , a = s(e / 2)
-                    , n = Array.from({
+                    , a = s(e / 2);
+                
+                // Optimize: Only create filters for the specified frequency range
+                const fMin = this.frequencyMin > 0 ? s(this.frequencyMin) : i;
+                const fMax = this.frequencyMax > 0 && this.frequencyMax < e / 2 ? s(this.frequencyMax) : a;
+                
+                const n = Array.from({
                         length: t
-                }, ( () => Array(this.fftSamples / 2 + 1).fill(0)))
-                    , h = e / this.fftSamples;
+                }, ( () => {
+                    const fftHalfSize = this.fftSamples / 2 + 1;
+                    const arr = new Float32Array(fftHalfSize);
+                    arr.fill(0);
+                    return arr;
+                }));
+                const h = e / this.fftSamples;
         for (let e = 0; e < t; e++) {
-            let s = r(i + e / t * (a - i))
+            let s = r(fMin + e / t * (fMax - fMin))
               , o = Math.floor(s / h)
               , l = o * h
               , c = (s - l) / ((o + 1) * h - l);
-            n[e][o] = 1 - c,
-            n[e][o + 1] = c
+            if (o >= 0 && o < n[e].length) n[e][o] = 1 - c;
+            if (o + 1 >= 0 && o + 1 < n[e].length) n[e][o + 1] = c;
         }
         this._filterBankCache[cacheKey] = n;
         return n
@@ -504,6 +559,12 @@ class h extends s {
             const e = t.length / this.canvas.width;
             o = Math.max(0, Math.round(r - e))
         }
+        
+        // OPTIMIZATION: Calculate frequency range bin indices once
+        const minBinFull = Math.floor(this.frequencyMin * r / n);
+        const maxBinFull = Math.ceil(this.frequencyMax * r / n);
+        const binRangeSize = maxBinFull - minBinFull;
+        
         const l = new a(r,n,this.windowFunc,this.alpha);
         let c;
         switch (this.scale) {
@@ -519,24 +580,127 @@ class h extends s {
         case "erb":
             c = this.createFilterBank(this.numErbFilters, n, this.hzToErb, this.erbToHz)
         }
-        for (let e = 0; e < i; e++) {
-            const s = t.getChannelData(e)
-              , i = [];
-            let a = 0;
-                        for (; a + r < s.length; ) {
-                                const tSlice = s.subarray(a, a + r)
-                                    , e = new Uint8Array(r / 2);
-                                let n = l.calculateSpectrum(tSlice);
-                c && (n = this.applyFilterBank(n, c));
-                for (let t = 0; t < r / 2; t++) {
-                    const s = n[t] > 1e-12 ? n[t] : 1e-12
-                      , r = 20 * Math.log10(s);
-                    r < -this.gainDB - this.rangeDB ? e[t] = 0 : r > -this.gainDB ? e[t] = 255 : e[t] = (r + this.gainDB) / this.rangeDB * 255 + 256
+        
+        this.peakBandArrayPerChannel = [];
+        
+        const gainDBNeg = -this.gainDB;
+        const gainDBNegRange = gainDBNeg - this.rangeDB;
+        const rangeDBReciprocal = 255 / this.rangeDB;
+        
+        if (this.options.peakMode) {
+            // 1. 第一次掃描：找出全局最大峰值
+            let globalMaxPeakValue = 0;
+            
+            for (let e = 0; e < i; e++) {
+                const s = t.getChannelData(e);
+                let a = 0;
+                
+                for (; a + r < s.length; ) {
+                    const tSlice = s.subarray(a, a + r);
+                    l.peak = 0;
+                    let spectrumData = l.calculateSpectrum(tSlice);
+                    
+                    let peakValueInRange = 0;
+                    for (let k = minBinFull; k < maxBinFull && k < spectrumData.length; k++) {
+                      peakValueInRange = Math.max(peakValueInRange, spectrumData[k] || 0);
+                    }
+                    
+                    globalMaxPeakValue = Math.max(globalMaxPeakValue, peakValueInRange);
+                    a += r - o;
                 }
-                i.push(e),
-                a += r - o
             }
-            h.push(i)
+            
+            // 2. 計算閾值：基本顯示閾值 (40%) 和 高峰值變色閾值 (70%)
+            const peakThresholdMultiplier = this.options.peakThreshold !== undefined ? this.options.peakThreshold : 0.4;
+            const peakThreshold = globalMaxPeakValue * peakThresholdMultiplier;
+            const highPeakThreshold = globalMaxPeakValue * 0.7; // 新增：70% 閾值
+            
+            // 3. 第二次掃描：記錄數據
+            for (let e = 0; e < i; e++) {
+                const s = t.getChannelData(e)
+                  , i = []
+                  , channelPeakBands = [];
+                let a = 0;
+                for (; a + r < s.length; ) {
+                    const tSlice = s.subarray(a, a + r)
+                        , e = new Uint8Array(r / 2);
+                    
+                    l.peak = 0;
+                    let spectrumData = l.calculateSpectrum(tSlice);
+                    
+                    let peakBandInRange = Math.max(0, minBinFull);
+                    let peakValueInRange = spectrumData[peakBandInRange] || 0;
+                    for (let k = minBinFull; k < maxBinFull && k < spectrumData.length; k++) {
+                      if ((spectrumData[k] || 0) > peakValueInRange) {
+                        peakValueInRange = spectrumData[k];
+                        peakBandInRange = k;
+                      }
+                    }
+                    
+                    // 修改：存儲對象而不是單純的索引
+                    if (peakValueInRange >= peakThreshold) {
+                      channelPeakBands.push({
+                          bin: peakBandInRange,
+                          isHigh: peakValueInRange >= highPeakThreshold // 標記是否超過 70%
+                      });
+                    } else {
+                      channelPeakBands.push(null);
+                    }
+                    
+                    let n = spectrumData;
+                    c && (n = this.applyFilterBank(n, c));
+                    
+                    const startBin = c ? 0 : minBinFull;
+                    const endBin = c ? r / 2 : Math.min(maxBinFull, r / 2);
+                    
+                    for (let t = startBin; t < endBin; t++) {
+                        const s = n[t] > 1e-12 ? n[t] : 1e-12
+                          , r = 20 * Math.log10(s);
+                        if (r < gainDBNegRange) {
+                            e[t] = 0;
+                        } else if (r > gainDBNeg) {
+                            e[t] = 255;
+                        } else {
+                            e[t] = (r + this.gainDB) * rangeDBReciprocal + 256;
+                        }
+                    }
+                    i.push(e),
+                    a += r - o
+                }
+                this.peakBandArrayPerChannel.push(channelPeakBands);
+                h.push(i)
+            }
+        } else {
+            // Peak Mode 禁用時的邏輯
+            for (let e = 0; e < i; e++) {
+                const s = t.getChannelData(e)
+                  , i = [];
+                let a = 0;
+                for (; a + r < s.length; ) {
+                    const e = new Uint8Array(r / 2);
+                    l.peak = 0;
+                    let n = l.calculateSpectrum(s.subarray(a, a + r));
+                    c && (n = this.applyFilterBank(n, c));
+                    
+                    const startBin = c ? 0 : minBinFull;
+                    const endBin = c ? r / 2 : Math.min(maxBinFull, r / 2);
+                    
+                    for (let t = startBin; t < endBin; t++) {
+                        const s = n[t] > 1e-12 ? n[t] : 1e-12
+                          , r = 20 * Math.log10(s);
+                        if (r < gainDBNegRange) {
+                            e[t] = 0;
+                        } else if (r > gainDBNeg) {
+                            e[t] = 255;
+                        } else {
+                            e[t] = (r + this.gainDB) * rangeDBReciprocal + 256;
+                        }
+                    }
+                    i.push(e),
+                    a += r - o
+                }
+                h.push(i)
+            }
         }
         return h
     }

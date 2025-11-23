@@ -39,6 +39,7 @@ export function initDragDropLoader({
 
   function showUploadOverlay(total) {
     if (!uploadOverlay) return;
+    document.dispatchEvent(new Event('drop-overlay-hide'));
     if (uploadProgressBar) uploadProgressBar.style.width = '0%';
     if (uploadProgressText) uploadProgressText.textContent = `0/${total}`;
     uploadOverlay.style.display = 'flex';
@@ -126,6 +127,8 @@ export function initDragDropLoader({
       return;
     }
 
+    // 確保 drop-overlay 保持顯示
+    showOverlay();
     showUploadOverlay(validFiles.length);
 
     if (typeof onBeforeLoad === 'function') {
@@ -173,6 +176,10 @@ export function initDragDropLoader({
         await importKmlFile(pendingKmlFile);
         pendingKmlFile = null;
       }
+      // 成功加載文件後隱藏 overlay
+      hideOverlay();
+    } else {
+      // 沒有文件被成功加載，保持 overlay 顯示以便用戶重新操作
     }
     if (skippedLong > 0) {
       showMessageBox({
@@ -205,8 +212,14 @@ export function initDragDropLoader({
     if (!isFileDrag(e)) return;
     e.preventDefault();
     dragCounter--;
-    if (dragCounter === 0) {
-      hideOverlay();
+    // 只有當 dragCounter <= 0 且 spectrogram 已解碼繪製時，才隱藏 overlay
+    // 如果 spectrogram 還未解碼繪製，drop-overlay 應該保持顯示
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      const duration = wavesurfer ? wavesurfer.getDuration() : 0;
+      if (duration > 0) {
+        hideOverlay();
+      }
     }
   });
 
@@ -258,7 +271,6 @@ export function initDragDropLoader({
     if (!isFileDrag(e)) return;
     e.preventDefault();
     dragCounter = 0;
-    hideOverlay();
     const files = await getFilesFromDataTransfer(e.dataTransfer);
     handleFiles(files);
   });

@@ -76,12 +76,15 @@
         <button id="exportBtn" title="Export" class="sidebar-button"><i class="fa-solid fa-file-export"></i></button>
         <button id="mapBtn" title="Map (Ctrl+M)" class="sidebar-button"><i class="fa-solid fa-map-location-dot"></i></button>
         <button id="setting" title="Spectrogram setting (Ctrl+S)" class="sidebar-button"><i class="fa-solid fa-sliders"></i></button>
-        <button id="expandBackBtn" title="Back to previous session (Backspace)" class="sidebar-button">
-          <i class="fa-solid fa-reply"></i>
-          <span id="expandBackCount" class="expand-back-count"></span>
-        </button>
         <button id="timeexpBtn" class="sidebar-button" title="10x Time Expansion">
           <i class="fa-solid fa-clock-rotate-left"></i>
+        </button>
+        <button id="peakBtn" class="sidebar-button" title="Peak Tracking Mode">
+          <i class="fa-solid fa-life-ring"></i>
+        </button>
+                <button id="expandBackBtn" title="Back to previous session (Backspace)" class="sidebar-button">
+          <i class="fa-solid fa-reply"></i>
+          <span id="expandBackCount" class="expand-back-count"></span>
         </button>
       </div>
       <!-- Tool Bar -->    
@@ -120,6 +123,20 @@
         <label class="slider-label">Line
           <label class="switch" title="Show 10kHz Lines">
             <input type="checkbox" id="toggleGridSwitch">
+            <span class="slider round"></span>
+          </label>
+        </label>
+      </div>
+      <!-- Peak Mode Tool Bar -->
+      <div id="peak-mode-tool-bar">
+        <label class="slider-label">Peak Threshold
+          <input type="range" id="peakThresholdSlider" min="0.01" max="0.99" step="0.01" value="0.4" title="Peak Threshold">
+          <span class="slider-value" id="peakThresholdVal">40%</span>
+        </label>
+        <div class="toolbar-divider"></div>
+        <label class="slider-label">Peak Mode
+          <label class="switch" title="Enable Peak Mode">
+            <input type="checkbox" id="peakModeSwitch">
             <span class="slider round"></span>
           </label>
         </label>
@@ -301,7 +318,7 @@
               <div id="upload-progress-text" class="progress-text">0/0</div>
             </div>
             <div id="viewer-container">
-            <div id="spectrogram-only"><canvas id="spectrogram-canvas"></canvas></div>
+            <div id="spectrogram-only"></div>
             <canvas id="freq-grid"></canvas>
           </div>
           <div id="fixed-overlay">

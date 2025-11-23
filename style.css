@@ -137,9 +137,9 @@ html, body {
   font-family: 'Noto Sans HK', sans-serif;
   font-size: 12px;
   color: black;
-  background-color: white;
+  background-color: #fff;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
   padding: 2px 6px;
-  border: 1px solid #ccc;
   border-radius: 4px;
   white-space: nowrap;
   z-index: 30;
@@ -153,7 +153,7 @@ html, body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 11;
+  z-index: 21;
   overflow: hidden;
 }
 #fixed-overlay > * {
@@ -244,7 +244,7 @@ html, body {
   width: 30px;
   height: 30px;
   font-size: 18px;
-  background: white;
+  background: #fff;
   border: none;
   display: flex;
   align-items: center;
@@ -252,7 +252,7 @@ html, body {
   cursor: pointer;
 }
 .zoom-button:not(:disabled):hover {
-  background: #eee;
+  background: #ccc;
 }
 .zoom-button:disabled {
   background: #eee;
@@ -586,6 +586,48 @@ input[type="file"]:hover {
   width: 100%;
 }
 
+#peak-mode-tool-bar {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 30px);
+  transform: translateX(-50%) scale(0.9);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 5px;
+  padding: 8px 12px;
+  width: 450px;
+  background-color: #fff;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #eee;
+  font-family: 'Noto Sans HK', sans-serif;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease, top 0.2s ease;
+  overflow-x: auto;
+  z-index: 100;
+}
+
+input[type="range"]#peakThresholdSlider {
+    width: 150px;
+}
+
+#peak-mode-tool-bar.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#peak-mode-tool-bar .toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background-color: #ddd;
+  margin: 0 0 0 -4px;
+}
+
 #tool-bar {
   position: absolute;
   left: 50%;
@@ -611,10 +653,22 @@ input[type="file"]:hover {
   overflow-x: auto;
 }
 
+/* 工具欄疊加邏輯 */
+/* 當 tool-bar 和 peak-mode-tool-bar 都開啟時，peak-mode-tool-bar 向下移，避開 tool-bar */
+#tool-bar.open ~ #peak-mode-tool-bar.open {
+  top: calc(100% + 115px);
+}
+
+/* 當 peak-mode-tool-bar 開啟但 tool-bar 還未開啟時，peak-mode-tool-bar 保持預設位置 */
+#tool-bar:not(.open) ~ #peak-mode-tool-bar.open,
+#peak-mode-tool-bar.open {
+  top: calc(100% + 30px);
+}
+
 #tool-bar.open {
   opacity: 1;
   pointer-events: auto;
-  z-index: 100;
+  z-index: 101;
 }
 
 #tool-bar .toolbar-button {
@@ -1137,6 +1191,15 @@ body.timeexp-open #timeexpBtn {
   background-color: #007bff;
 }
 
+/* Peak Button states */
+#peakBtn.toolbar-open {
+  background-color: #0d6efd;  /* 藍色：Peak-Tool-bar 開啟 */
+}
+
+#peakBtn.active {
+  background-color: #B91F1C;  /* 紅色：Peak Mode 啟用 */
+}
+
 input.tag-button {
   width: 90px;
   margin-bottom: 4px;
@@ -1269,6 +1332,21 @@ input.tag-button.editing {
   text-overflow: ellipsis;
 }
 
+/* Power Spectrum Popup dropdown buttons */
+#powerSpectrumWindowType.dropdown-button {
+  width: 120px;
+  text-align: left;
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#powerSpectrumFFTSize.dropdown-button {
+  width: 70px;
+  text-align: left;
+}
+
 .dropdown-menu {
   position: absolute;
   display: none;
@@ -1344,7 +1422,8 @@ input.tag-button.editing {
 .popup-title {
   margin-left: 10px;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 12px;
+  font-family: 'Noto Sans HK', sans-serif;
 }
 
 .popup-close-btn {
@@ -1446,6 +1525,7 @@ input.tag-button.editing {
 
 .selection-rect:hover {
   background-color: rgba(0,0,0,0.1);
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 .selection-ctrl-icon {
@@ -1472,19 +1552,53 @@ input.tag-button.editing {
 .freq-tooltip {
   position: absolute;
   z-index: 30;
-  padding: 6px 10px;
-  background: white;
+  padding: 6px 8px 2px 2px;
+  line-height: 14px;
+  background: #fff;
   font-size: 12px;
   font-family: 'Noto Sans HK', sans-serif;
   box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
   cursor: move;
 }
 
+.freq-tooltip-table {
+  border-collapse: collapse;
+  margin-bottom: 4px;
+  width: 100%;
+}
+
+.freq-tooltip-table tr {
+  display: table-row;
+}
+
+.freq-tooltip-table td {
+  padding: 2px 4px;
+  border: none;
+}
+
+.freq-tooltip-table td.label {
+  font-weight: bold;
+  text-align: right;
+  padding-right: 2px;
+  min-width: 70px;
+}
+
+.freq-tooltip-table td.value {
+  text-align: left;
+  min-width: 60px;
+}
+
 .tooltip-close-btn {
   position: absolute;
   top: 2px;
-  right: 6px;
+  right: 4px;
   cursor: pointer;
+  transition: color 0.2s, font-weight 0.2s;
+}
+
+.tooltip-close-btn:hover {
+  color: red;
+  font-weight:bold;
 }
 
 /* === Frequency Axis === */
@@ -2069,6 +2183,7 @@ input.tag-button.editing {
 
 .freq-menu-item:hover {
   background-color: rgba(0,0,0,0.1);
+  border-radius:5px;
 }
 
 .freq-menu-item.disabled {
@@ -2157,4 +2272,234 @@ input.tag-button.editing {
 
 .map-marker-survey:hover {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+/* === Power Spectrum 菜單 === */
+.selection-context-menu {
+  user-select: none;
+  font-family: 'Noto Sans HK', sans-serif;
+}
+
+.selection-context-menu div {
+  transition: background 0.15s ease;
+}
+
+.selection-context-menu div:hover {
+  background: #e8e8e8 !important;
+}
+
+/* === Power Spectrum Popup === */
+.power-spectrum-popup {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  font-family: 'Noto Sans HK', sans-serif;
+}
+
+.power-spectrum-controls {
+  padding: 5px;
+  margin: 5px;
+  background: #fafafa;
+  display: flex;
+  border-radius: 5px;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.power-spectrum-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.power-spectrum-controls span {
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+.power-spectrum-controls select,
+.power-spectrum-controls input[type="number"] {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 14px;
+  font-family: 'Noto Sans HK', sans-serif;
+  cursor: pointer;
+  background: white;
+}
+
+.power-spectrum-controls input[type="number"] {
+  width: 60px;
+  height:20px;
+}
+
+/* === Power Spectrum Popup === */
+.power-spectrum-popup {
+  position: fixed;
+  width: 450px;
+  height: 805px;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.power-spectrum-popup.modal-popup {
+  background: white;
+}
+
+.power-spectrum-canvas-container {
+  flex: 0 0 auto;
+  width: 438px;
+  height: 438px;
+  padding: 5px 5px 2px 5px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.power-spectrum-canvas-container canvas {
+  width: 438px;
+  height: 438px;
+  border-radius: 5px;
+  background: white;
+  border: 1px solid #ddd;
+}
+
+/* === Selection Context Menu === */
+.selection-context-menu {
+  background: rgba(255, 255, 255);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 120px;
+  padding: 4px 0;
+  font-family: 'Noto Sans HK', sans-serif;
+  font-size: 12px;
+}
+
+.selection-context-menu-item {
+  padding: 4px 6px;
+  border-radius:5px;
+  cursor: pointer;
+  user-select: none;
+  color: #333;
+  text-align: center;
+}
+
+.selection-context-menu-item:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+/* === Bat Call Parameters Panel === */
+.bat-call-parameters-panel {
+  padding: 5px;
+  background: #f5f5f5;
+  border-radius: 5px;
+  margin: 5px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 12px;
+  font-family: 'Noto Sans HK', 'Courier New', monospace;
+}
+
+.bat-call-parameters-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bat-call-parameters-table tr {
+  height: 22px;
+}
+
+.bat-call-parameters-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid #eee;
+}
+
+.param-label {
+  text-align: right;
+  font-weight: 600;
+  color: #333;
+  width: 35%;
+}
+
+.param-value {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+  color: #0066cc;
+  font-weight: 600;
+  width: 40%;
+}
+
+.param-unit {
+  text-align: left;
+  color: #666;
+  padding-left: 4px;
+  font-size: 11px;
+  width: 25%;
+}
+
+.bat-call-parameters-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* === Bat Call Controls Panel === */
+.bat-call-controls {
+  padding: 5px;
+  margin: 5px;
+  background: #f5f5f5;
+  display: flex;
+  border-radius: 5px;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  border-top: 1px solid #ddd;
+}
+
+.bat-call-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.bat-call-controls span {
+  font-weight: 600;
+  color: #333;
+  font-size: 11px;
+}
+
+.bat-call-controls input[type="number"],
+.bat-call-controls .dropdown-button {
+  padding: 3px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: 'Noto Sans HK', sans-serif;
+  background: white;
+}
+
+.bat-call-controls input[type="number"] {
+  width: 45px;
+  height: 18px;
+}
+
+.bat-call-controls .dropdown-button {
+  padding: 3px 8px;
+  text-align:left;
+  width: 60px;
+  height: 25px;
+  cursor: pointer;
 }
