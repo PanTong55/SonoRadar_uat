@@ -1,8 +1,3 @@
-import init, { SpectrogramEngine } from './spectrogram_wasm.js';
-
-// WASM 初始化 Promise
-let wasmReady = init();
-
 function t(t, e, s, r) {
     return new (s || (s = Promise))((function(i, a) {
         function n(t) {
@@ -259,27 +254,8 @@ class h extends s {
         this.createWrapper(),
         this.createCanvas();
 
-        // WASM integration
-        this._wasmEngine = null;
-        this._wasmReady = wasmReady.then(() => {
-            this._wasmEngine = new SpectrogramEngine(
-                this.fftSamples,
-                this.windowFunc,
-                this.alpha
-            );
-        });
-
-        // 濾波器組相關字段
-        this._filterBankMatrix = null;  // 當前濾波器組矩陣 (二維陣列)
-        this._filterBankFlat = null;    // 扁平化的濾波器組 (Float32Array)
-        this._lastFilterBankScale = null; // 用於檢測濾波器組是否需要更新
-
         // cache for filter banks to avoid rebuilding on each render
         this._filterBankCache = {};
-        // 新增: 按完整 key 緩存濾波器組矩陣，避免重複計算
-        this._filterBankCacheByKey = {};
-        // 新增: 追蹤當前加載到 WASM 的濾波器組 key，避免重複加載
-        this._loadedFilterBankKey = null;
         // cache for resample mappings keyed by inputLen:outputWidth
         this._resampleCache = {};
         // precomputed uint8 colormap (RGBA 0-255)
@@ -357,26 +333,16 @@ class h extends s {
         }, this.wrapper),
         this.spectrCc = this.canvas.getContext("2d")
     }
-    async render() {
+    render() {
         var t;
         if (this.frequenciesDataUrl)
             this.loadFrequenciesData(this.frequenciesDataUrl);
         else {
             const e = null === (t = this.wavesurfer) || void 0 === t ? void 0 : t.getDecodedData();
-            if (e) {
-                const frequencies = await this.getFrequencies(e);
-                if (frequencies) {
-                    this.drawSpectrogram(frequencies);
-                }
-            }
+            e && this.drawSpectrogram(this.getFrequencies(e))
         }
     }
     drawSpectrogram(t) {
-        // 檢查 wrapper 和 canvas 是否已被清空（在 destroy 或 selection mode 切換時可能發生）
-        if (!this.wrapper || !this.canvas) {
-            return;
-        }
-        
         isNaN(t[0][0]) || (t = [t]),
         this.wrapper.style.height = this.height * t.length + "px",
         this.canvas.width = this.getWidth(),
@@ -575,62 +541,10 @@ class h extends s {
                 r[i] += t[s] * e[i][s];
         return r
     }
-    
-    /// 輔助方法：將二維濾波器組矩陣扁平化並加載到 WASM
-    /// 
-    /// # Arguments
-    /// * `filterBankMatrix` - 二維濾波器組矩陣 (Float32Array[])
-    /// 
-    /// 此方法將 2D 矩陣 (num_filters x freq_bins) 轉換為扁平化的 Float32Array (行優先)
-    /// 優化: 只在濾波器組實際改變時才執行扁平化和 WASM 調用
-    flattenAndLoadFilterBank(filterBankMatrix) {
-        if (!filterBankMatrix || filterBankMatrix.length === 0) {
-            // 清除濾波器組
-            if (this._wasmEngine && this._filterBankFlat !== null) {
-                this._wasmEngine.clear_filter_bank();
-            }
-            this._filterBankMatrix = null;
-            this._filterBankFlat = null;
-            return;
-        }
-        
-        const numFilters = filterBankMatrix.length;
-        const freqBins = filterBankMatrix[0].length;
-        
-        // 建立扁平化陣列 (行優先順序)
-        // 優化: 使用 subarray 批量複製，而不是逐個元素複製
-        const flatArray = new Float32Array(numFilters * freqBins);
-        for (let i = 0; i < numFilters; i++) {
-            const row = filterBankMatrix[i];
-            flatArray.set(row, i * freqBins);  // 更快的批量複製
-        }
-        
-        // 保存並加載到 WASM
-        this._filterBankMatrix = filterBankMatrix;
-        this._filterBankFlat = flatArray;
-        
-        if (this._wasmEngine) {
-            this._wasmEngine.load_filter_bank(flatArray, numFilters);
-        }
-    }
     getWidth() {
         return this.wavesurfer.getWrapper().offsetWidth
     }
-    
-    /// 清除濾波器組緩存 (當 FFT 大小或頻率範圍改變時調用)
-    clearFilterBankCache() {
-        this._filterBankCache = {};
-        this._filterBankCacheByKey = {};
-        this._loadedFilterBankKey = null;
-        this._filterBankMatrix = null;
-        this._filterBankFlat = null;
-    }
-    async getFrequencies(t) {
-        // 檢查 this.options 是否為 null（在 destroy 或 selection mode 切換時可能發生）
-        if (!this.options || !t) {
-            return;
-        }
-        
+    getFrequencies(t) {
         var e, s;
         const r = this.fftSamples
           , i = (null !== (e = this.options.splitChannels) && void 0 !== e ? e : null === (s = this.wavesurfer) || void 0 === s ? void 0 : s.options.splitChannels) ? t.numberOfChannels : 1;
@@ -651,178 +565,138 @@ class h extends s {
         const maxBinFull = Math.ceil(this.frequencyMax * r / n);
         const binRangeSize = maxBinFull - minBinFull;
         
-        // Wait for WASM to be ready
-        await this._wasmReady;
-        
-        // 檢查是否需要重新計算濾波器組
-        // 根據 scale、sampleRate 等決定是否需要更新
-        let filterBankMatrix = null;
-        const currentFilterBankKey = `${this.scale}:${n}:${this.frequencyMin}:${this.frequencyMax}`;
-        
-        if (this.scale !== "linear") {
-            // 如果濾波器組需要更新，則計算新的濾波器組
-            if (this._lastFilterBankScale !== currentFilterBankKey) {
-                let c;
-                let numFilters;
-                
-                // 首先檢查是否已緩存此配置的濾波器組
-                if (this._filterBankCacheByKey[currentFilterBankKey]) {
-                    c = this._filterBankCacheByKey[currentFilterBankKey];
-                    console.log('✅ 使用已緩存的濾波器組 (命中)', {
-                        scale: this.scale,
-                        sampleRate: n,
-                        freqMin: this.frequencyMin,
-                        freqMax: this.frequencyMax,
-                        cacheSize: Object.keys(this._filterBankCacheByKey).length
-                    });
-                } else {
-                    // 計算新的濾波器組並緩存
-                    const filterBankStartTime = performance.now();
-                    switch (this.scale) {
-                    case "mel":
-                        numFilters = this.numMelFilters;
-                        c = this.createFilterBank(numFilters, n, this.hzToMel, this.melToHz);
-                        break;
-                    case "logarithmic":
-                        numFilters = this.numLogFilters;
-                        c = this.createFilterBank(numFilters, n, this.hzToLog, this.logToHz);
-                        break;
-                    case "bark":
-                        numFilters = this.numBarkFilters;
-                        c = this.createFilterBank(numFilters, n, this.hzToBark, this.barkToHz);
-                        break;
-                    case "erb":
-                        numFilters = this.numErbFilters;
-                        c = this.createFilterBank(numFilters, n, this.hzToErb, this.erbToHz);
-                        break;
-                    }
-                    const filterBankTime = performance.now() - filterBankStartTime;
-                    
-                    // 緩存計算結果，以便後續使用
-                    this._filterBankCacheByKey[currentFilterBankKey] = c;
-                    console.log(`⏱️  計算濾波器組耗時: ${filterBankTime.toFixed(2)}ms (${numFilters} filters)`, {
-                        scale: this.scale,
-                        sampleRate: n,
-                        cacheSize: Object.keys(this._filterBankCacheByKey).length
-                    });
-                }
-                
-                // 只在濾波器組實際改變時加載到 WASM (關鍵優化)
-                if (this._loadedFilterBankKey !== currentFilterBankKey) {
-                    const wasmLoadStartTime = performance.now();
-                    this.flattenAndLoadFilterBank(c);
-                    const wasmLoadTime = performance.now() - wasmLoadStartTime;
-                    this._loadedFilterBankKey = currentFilterBankKey;
-                    console.log(`⏱️  WASM 加載耗時: ${wasmLoadTime.toFixed(2)}ms`);
-                } else {
-                    console.log('✅ 濾波器組已加載到 WASM (跳過)');
-                }
-                
-                this._lastFilterBankScale = currentFilterBankKey;
-            }
-        } else {
-            // Linear scale: 清除濾波器組
-            if (this._loadedFilterBankKey !== null) {
-                this.flattenAndLoadFilterBank(null);
-                this._loadedFilterBankKey = null;
-            }
+        const l = new a(r,n,this.windowFunc,this.alpha);
+        let c;
+        switch (this.scale) {
+        case "mel":
+            c = this.createFilterBank(this.numMelFilters, n, this.hzToMel, this.melToHz);
+            break;
+        case "logarithmic":
+            c = this.createFilterBank(this.numLogFilters, n, this.hzToLog, this.logToHz);
+            break;
+        case "bark":
+            c = this.createFilterBank(this.numBarkFilters, n, this.hzToBark, this.barkToHz);
+            break;
+        case "erb":
+            c = this.createFilterBank(this.numErbFilters, n, this.hzToErb, this.erbToHz)
         }
         
         this.peakBandArrayPerChannel = [];
         
-        if (this.options && this.options.peakMode) {
-            // Peak Mode: 使用新的 WASM API (get_peaks) 進行峰值檢測
-            // 峰值檢測現在在 WASM 中進行，這大大加速了計算（避免了雙重掃描）
-            const peakThresholdMultiplier = this.options.peakThreshold !== undefined ? this.options.peakThreshold : 0.4;
+        const gainDBNeg = -this.gainDB;
+        const gainDBNegRange = gainDBNeg - this.rangeDB;
+        const rangeDBReciprocal = 255 / this.rangeDB;
+        
+        if (this.options.peakMode) {
+            // 1. 第一次掃描：找出全局最大峰值
+            let globalMaxPeakValue = 0;
             
-            // 對每個通道進行峰值檢測
             for (let e = 0; e < i; e++) {
-                const s = t.getChannelData(e)
-                  , channelFrames = []
-                  , channelPeakBands = [];
+                const s = t.getChannelData(e);
                 let a = 0;
                 
-                // 計算完整通道的幅度數據（這會在 WASM 內部存儲所有幀的幅度值）
-                // 為了獲得完整的幀數據，我們先計算整個通道的頻譜
-                const fullU8Spectrum = this._wasmEngine.compute_spectrogram_u8(
-                    s,
-                    o,
-                    this.gainDB,
-                    this.rangeDB
-                );
-                
-                // 現在 WASM 已經計算了所有幀的幅度值，我們可以獲取峰值信息
-                const peakIndices = this._wasmEngine.get_peaks(peakThresholdMultiplier);
-                const peakMagnitudes = this._wasmEngine.get_peak_magnitudes(peakThresholdMultiplier);
-                const globalMaxValue = this._wasmEngine.get_global_max();
-                const highPeakThreshold = globalMaxValue * 0.7;
-                
-                // 計算幀數（根據 WASM 存儲的幀數）
-                const freq_bins = this.fftSamples / 2;
-                const numFilters = this._wasmEngine.get_num_filters();
-                const outputSize = this.scale !== "linear" && numFilters > 0 ? numFilters : freq_bins;
-                const numFrames = Math.floor(fullU8Spectrum.length / outputSize);
-                
-                // 將 u8 頻譜數據按幀拆分
-                for (let frameIdx = 0; frameIdx < numFrames; frameIdx++) {
-                    const outputFrame = new Uint8Array(outputSize);
-                    const frameStartIdx = frameIdx * outputSize;
-                    for (let k = 0; k < outputSize; k++) {
-                        outputFrame[k] = fullU8Spectrum[frameStartIdx + k];
-                    }
-                    channelFrames.push(outputFrame);
-                }
-                
-                // 轉換峰值索引為 channelPeakBands 格式
-                for (let frameIdx = 0; frameIdx < peakIndices.length && frameIdx < channelFrames.length; frameIdx++) {
-                    const peakBinIndex = peakIndices[frameIdx];
+                for (; a + r < s.length; ) {
+                    const tSlice = s.subarray(a, a + r);
+                    l.peak = 0;
+                    let spectrumData = l.calculateSpectrum(tSlice);
                     
-                    if (peakBinIndex !== 0xFFFF) {
-                        // 有效的峰值（超過閾值）
-                        // 使用峰值幅度值判定是否超過 70% 全局最大值
-                        const peakMagnitude = peakMagnitudes[frameIdx] || 0;
-                        const isHigh = peakMagnitude >= highPeakThreshold;
-                        
-                        channelPeakBands.push({
-                            bin: peakBinIndex,
-                            isHigh: isHigh
-                        });
-                    } else {
-                        // 無效的峰值（未超過閾值）
-                        channelPeakBands.push(null);
+                    let peakValueInRange = 0;
+                    for (let k = minBinFull; k < maxBinFull && k < spectrumData.length; k++) {
+                      peakValueInRange = Math.max(peakValueInRange, spectrumData[k] || 0);
                     }
+                    
+                    globalMaxPeakValue = Math.max(globalMaxPeakValue, peakValueInRange);
+                    a += r - o;
                 }
-                
+            }
+            
+            // 2. 計算閾值：基本顯示閾值 (40%) 和 高峰值變色閾值 (70%)
+            const peakThresholdMultiplier = this.options.peakThreshold !== undefined ? this.options.peakThreshold : 0.4;
+            const peakThreshold = globalMaxPeakValue * peakThresholdMultiplier;
+            const highPeakThreshold = globalMaxPeakValue * 0.7; // 新增：70% 閾值
+            
+            // 3. 第二次掃描：記錄數據
+            for (let e = 0; e < i; e++) {
+                const s = t.getChannelData(e)
+                  , i = []
+                  , channelPeakBands = [];
+                let a = 0;
+                for (; a + r < s.length; ) {
+                    const tSlice = s.subarray(a, a + r)
+                        , e = new Uint8Array(r / 2);
+                    
+                    l.peak = 0;
+                    let spectrumData = l.calculateSpectrum(tSlice);
+                    
+                    let peakBandInRange = Math.max(0, minBinFull);
+                    let peakValueInRange = spectrumData[peakBandInRange] || 0;
+                    for (let k = minBinFull; k < maxBinFull && k < spectrumData.length; k++) {
+                      if ((spectrumData[k] || 0) > peakValueInRange) {
+                        peakValueInRange = spectrumData[k];
+                        peakBandInRange = k;
+                      }
+                    }
+                    
+                    // 修改：存儲對象而不是單純的索引
+                    if (peakValueInRange >= peakThreshold) {
+                      channelPeakBands.push({
+                          bin: peakBandInRange,
+                          isHigh: peakValueInRange >= highPeakThreshold // 標記是否超過 70%
+                      });
+                    } else {
+                      channelPeakBands.push(null);
+                    }
+                    
+                    let n = spectrumData;
+                    c && (n = this.applyFilterBank(n, c));
+                    
+                    const startBin = c ? 0 : minBinFull;
+                    const endBin = c ? r / 2 : Math.min(maxBinFull, r / 2);
+                    
+                    for (let t = startBin; t < endBin; t++) {
+                        const s = n[t] > 1e-12 ? n[t] : 1e-12
+                          , r = 20 * Math.log10(s);
+                        if (r < gainDBNegRange) {
+                            e[t] = 0;
+                        } else if (r > gainDBNeg) {
+                            e[t] = 255;
+                        } else {
+                            e[t] = (r + this.gainDB) * rangeDBReciprocal + 256;
+                        }
+                    }
+                    i.push(e),
+                    a += r - o
+                }
                 this.peakBandArrayPerChannel.push(channelPeakBands);
-                h.push(channelFrames)
+                h.push(i)
             }
         } else {
-            // Peak Mode 禁用時：直接使用新 API
+            // Peak Mode 禁用時的邏輯
             for (let e = 0; e < i; e++) {
                 const s = t.getChannelData(e)
                   , i = [];
                 let a = 0;
                 for (; a + r < s.length; ) {
-                    const tSlice = s.subarray(a, a + r);
+                    const e = new Uint8Array(r / 2);
+                    l.peak = 0;
+                    let n = l.calculateSpectrum(s.subarray(a, a + r));
+                    c && (n = this.applyFilterBank(n, c));
                     
-                    // 使用新 API 獲得 u8 頻譜（包含濾波器組處理和 dB 轉換）
-                    const u8Spectrum = this._wasmEngine.compute_spectrogram_u8(
-                        tSlice,
-                        o,
-                        this.gainDB,
-                        this.rangeDB
-                    );
+                    const startBin = c ? 0 : minBinFull;
+                    const endBin = c ? r / 2 : Math.min(maxBinFull, r / 2);
                     
-                    // 決定輸出大小（與 WASM 端的輸出大小一致）
-                    const numFilters = this._wasmEngine.get_num_filters();
-                    const outputSize = this.scale !== "linear" && numFilters > 0 ? numFilters : (r / 2);
-                    
-                    const outputFrame = new Uint8Array(outputSize);
-                    for (let k = 0; k < Math.min(outputSize, u8Spectrum.length); k++) {
-                        outputFrame[k] = u8Spectrum[k];
+                    for (let t = startBin; t < endBin; t++) {
+                        const s = n[t] > 1e-12 ? n[t] : 1e-12
+                          , r = 20 * Math.log10(s);
+                        if (r < gainDBNegRange) {
+                            e[t] = 0;
+                        } else if (r > gainDBNeg) {
+                            e[t] = 255;
+                        } else {
+                            e[t] = (r + this.gainDB) * rangeDBReciprocal + 256;
+                        }
                     }
-                    
-                    i.push(outputFrame);
+                    i.push(e),
                     a += r - o
                 }
                 h.push(i)
@@ -830,7 +704,6 @@ class h extends s {
         }
         return h
     }
-    
     freqType(t) {
         return t >= 1e3 ? (t / 1e3).toFixed(1) : Math.round(t)
     }
@@ -930,27 +803,4 @@ class h extends s {
         return out
     }
 }
-
-// 暴露 WASM 波形峰值計算函數給 wavesurfer
-// 這允許 wavesurfer 在沒有直接導入 WASM 模塊的情況下使用 WASM 優化
-wasmReady.then(() => {
-    // 動態導入 WASM 函數並暴露到全局作用域
-    try {
-        // 導入計算波形峰值的函數
-        const initModule = async () => {
-            const wasmModule = await import('./spectrogram_wasm.js');
-            if (wasmModule && wasmModule.compute_wave_peaks && wasmModule.find_global_max) {
-                window.__spectrogramWasmFuncs = {
-                    compute_wave_peaks: wasmModule.compute_wave_peaks,
-                    find_global_max: wasmModule.find_global_max
-                };
-                console.log('✅ WASM 波形峰值函數已加載');
-            }
-        };
-        initModule().catch(err => console.warn('⚠️ 無法加載 WASM 波形峰值函數:', err));
-    } catch (e) {
-        console.warn('⚠️ 無法暴露 WASM 函數:', e);
-    }
-}).catch(err => console.warn('⚠️ WASM 初始化失敗:', err));
-
 export {h as default};
